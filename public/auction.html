@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Auction Hub — Live Auction</title>
+  <meta name="description" content="Live IPL-style auction room. Bid on players in real-time with your friends." />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    body { display: flex; flex-direction: column; min-height: 100vh; }
+
+    .auction-layout {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 280px 1fr 300px;
+      grid-template-rows: 1fr;
+      gap: 0;
+      max-height: calc(100vh - 56px);
+      overflow: hidden;
+    }
+
+    @media (max-width: 1024px) {
+      .auction-layout {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto;
+        max-height: none;
+        overflow: visible;
+      }
+      body { overflow-y: auto; }
+    }
+
+    /* ── Panels ── */
+    .panel {
+      overflow-y: auto;
+      padding: 1rem;
+      border-right: 1px solid var(--border);
+    }
+
+    .panel:last-child { border-right: none; border-left: 1px solid var(--border); }
+
+    .panel-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-muted);
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ── Center Panel ── */
+    .center-panel {
+      overflow-y: auto;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    /* ── Navbar auction bar ── */
+    .auction-nav-bar {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .auction-nav-info {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+    }
+
+    /* ── Player Progress ── */
+    .progress-bar-wrap {
+      width: 100%;
+      height: 3px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 2px;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--grad-gold);
+      border-radius: 2px;
+      transition: width 0.5s ease;
+    }
+
+    /* ── Player Card (Auction) ── */
+    .auction-player-card {
+      background: var(--grad-card);
+      border: 1px solid var(--border-gold);
+      border-radius: var(--radius-xl);
+      padding: 1.5rem;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+      box-shadow: var(--shadow-gold);
+    }
+
+    .auction-player-card::before {
+      content:'';
+      position:absolute;
+      top:-60%;left:-60%;
+      width:220%;height:220%;
+      background:conic-gradient(from 0deg,transparent 0%,rgba(240,180,41,0.04) 25%,transparent 50%);
+      animation:cardSpin 10s linear infinite;
+    }
+
+    .player-num {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-bottom: 0.75rem;
+    }
+
+    .player-avatar-lg {
+      width: 90px; height: 90px;
+      border-radius: 50%;
+      margin: 0 auto 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 2.2rem;
+      font-weight: 700;
+      color: #fff;
+      border: 2px solid var(--border-gold);
+      box-shadow: var(--shadow-gold);
+      position: relative;
+      z-index: 1;
+    }
+
+    .player-name-lg {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      position: relative;
+      z-index: 1;
+    }
+
+    .player-meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      margin: 0.4rem 0 0.75rem;
+      flex-wrap: wrap;
+      position: relative;
+      z-index: 1;
+    }
+
+    .base-price-tag {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── Bid section ── */
+    .bid-section {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem;
+    }
+
+    .current-bid-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      text-align: center;
+      margin-bottom: 0.25rem;
+    }
+
+    .bid-amount-display {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 3.2rem;
+      font-weight: 700;
+      color: var(--gold);
+      text-align: center;
+      text-shadow: 0 0 30px rgba(240,180,41,0.4);
+      line-height: 1;
+      transition: all 0.15s;
+    }
+
+    .highest-bidder-label {
+      text-align: center;
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+      margin: 0.4rem 0 1rem;
+      min-height: 1.2em;
+    }
+
+    .highest-bidder-label .bidder-name {
+      color: var(--blue-bright);
+      font-weight: 600;
+    }
+
+    .bid-controls {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .bid-input {
+      flex: 1;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 600;
+      padding: 0.7rem 0.9rem;
+      outline: none;
+      transition: border-color var(--transition);
+    }
+
+    .bid-input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(240,180,41,0.12); }
+    .bid-input::placeholder { color: var(--text-muted); font-weight: 400; }
+
+    .quick-bids {
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+      margin-top: 0.5rem;
+    }
+
+    .quick-bid-btn {
+      padding: 0.3rem 0.65rem;
+      font-size: 0.78rem;
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 600;
+      background: rgba(240,180,41,0.1);
+      border: 1px solid rgba(240,180,41,0.2);
+      border-radius: var(--radius-full);
+      color: var(--gold);
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+
+    .quick-bid-btn:hover { background: rgba(240,180,41,0.2); }
+
+    /* ── Timer ── */
+    .timer-section {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 0.75rem 1rem;
+    }
+
+    .timer-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+    }
+
+    .timer-count {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--green-sold);
+      transition: color 0.3s;
+    }
+
+    .timer-count.warning  { color: var(--gold); }
+    .timer-count.critical { color: #ef4444; animation: timerPulse 0.5s ease infinite; }
+
+    /* ── Host controls bar ── */
+    .host-bar {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      background: rgba(240,180,41,0.05);
+      border: 1px solid var(--border-gold);
+      border-radius: var(--radius-md);
+      padding: 0.75rem 1rem;
+      align-items: center;
+    }
+
+    .host-bar-label {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--gold);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-right: 0.25rem;
+    }
+
+    /* ── Paused overlay ── */
+    .pause-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(5,6,15,0.85);
+      z-index: 150;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      backdrop-filter: blur(8px);
+      display: none;
+    }
+
+    .pause-overlay.active { display: flex; }
+
+    .pause-icon { font-size: 4rem; }
+    .pause-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--gold);
+    }
+
+    /* ── Teams panel ── */
+    .teams-list { display: flex; flex-direction: column; gap: 0.5rem; }
+
+    .team-row-auction {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      padding: 0.65rem 0.85rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      transition: all var(--transition);
+    }
+
+    .team-row-auction.winning-team {
+      border-color: rgba(34,197,94,0.35);
+      background: rgba(34,197,94,0.05);
+    }
+
+    .team-row-auction.my-team {
+      border-color: var(--border-blue);
+      background: rgba(59,130,246,0.05);
+    }
+
+    .team-row-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.4rem;
+    }
+
+    .team-budget-bar-wrap {
+      width: 100%;
+      height: 2px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 1px;
+      margin-top: 0.2rem;
+    }
+
+    .team-budget-bar {
+      height: 100%;
+      background: var(--grad-gold);
+      border-radius: 1px;
+      transition: width 0.5s ease;
+    }
+
+    /* ── Sold history ── */
+    .sold-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.5rem 0.6rem;
+      border-radius: var(--radius-sm);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      font-size: 0.8rem;
+      gap: 0.4rem;
+      animation: msgSlide 0.3s ease;
+    }
+
+    .sold-item.unsold-item {
+      border-color: rgba(239,68,68,0.2);
+      background: rgba(239,68,68,0.04);
+    }
+
+    .sold-player-name {
+      font-weight: 600;
+      font-size: 0.82rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+    }
+
+    .sold-bid { color: var(--gold); font-family:'Rajdhani',sans-serif; font-weight:700; white-space:nowrap; }
+    .sold-team { color: var(--text-muted); font-size: 0.72rem; white-space: nowrap; }
+
+    /* ── Chat panel ── */
+    .chat-panel {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding: 1rem;
+      overflow: hidden;
+    }
+
+    .chat-messages-area {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      margin-bottom: 0.75rem;
+    }
+
+    /* ── Waiting screen ── */
+    .waiting-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      text-align: center;
+      gap: 1rem;
+      padding: 2rem;
+    }
+
+    /* ── Ended screen ── */
+    #ended-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(5,6,15,0.95);
+      z-index: 200;
+      overflow-y: auto;
+      padding: 2rem 1.25rem;
+    }
+
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 0.75rem;
+      margin: 1.25rem 0;
+    }
+
+    .result-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 0.9rem;
+    }
+
+    .result-card .player-sold-name {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+
+<div class="animated-bg">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+</div>
+
+<div id="toast-container"></div>
+
+<!-- Pause Overlay -->
+<div class="pause-overlay" id="pause-overlay">
+  <div class="pause-icon">⏸️</div>
+  <div class="pause-title">Auction Paused</div>
+  <div style="color:var(--text-muted)">Waiting for the host to resume...</div>
+</div>
+
+<!-- Ended Overlay -->
+<div id="ended-overlay">
+  <div style="max-width:860px;margin:0 auto">
+    <div style="text-align:center;margin-bottom:2rem">
+      <div style="font-size:3rem;margin-bottom:0.5rem">🏆</div>
+      <h1 class="gradient-text" style="font-size:2.5rem;margin-bottom:0.5rem">Auction Ended!</h1>
+      <p style="color:var(--text-muted)">Here are the final results</p>
+    </div>
+
+    <h2 class="section-title">Team Standings</h2>
+    <div class="results-grid" id="final-teams"></div>
+
+    <h2 class="section-title" style="margin-top:1.5rem">Full Sold List</h2>
+    <div id="final-sold-list" style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:2rem"></div>
+
+    <div style="text-align:center">
+      <a href="/" class="btn btn-gold btn-lg">🏏 New Auction</a>
+    </div>
+  </div>
+</div>
+
+<!-- Navbar -->
+<nav class="navbar">
+  <div class="container" style="gap:0.75rem;flex-wrap:wrap">
+    <a href="/" class="nav-logo">🏏 Auction<span>Hub</span></a>
+    <div class="auction-nav-bar">
+      <span class="auction-nav-info" id="nav-room-info">Room: ——</span>
+      <span class="auction-nav-info" id="nav-team-info" style="color:var(--gold)"></span>
+      <div class="badge badge-gold" id="nav-status">LIVE</div>
+    </div>
+  </div>
+</nav>
+
+<!-- Main Layout -->
+<div class="auction-layout" id="auction-layout">
+
+  <!-- LEFT: Teams & Sold History -->
+  <div class="panel" style="display:flex;flex-direction:column;gap:0.75rem">
+
+    <!-- Teams -->
+    <div>
+      <div class="panel-title">Teams</div>
+      <div class="teams-list" id="teams-list">
+        <div class="empty-state">Loading...</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Sold History -->
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column">
+      <div class="panel-title">Sold History (<span id="sold-count">0</span>)</div>
+      <div id="sold-history" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:0.35rem">
+        <div class="empty-state" id="sold-empty">No players sold yet</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- CENTER: Player + Bidding -->
+  <div class="center-panel">
+
+    <!-- Waiting -->
+    <div class="waiting-screen" id="waiting-screen">
+      <div style="font-size:3rem">⏳</div>
+      <h2 style="font-family:'Rajdhani',sans-serif;font-size:1.6rem">Waiting for host to start</h2>
+      <div style="color:var(--text-muted);font-size:0.9rem">The auction will begin shortly</div>
+      <div class="waiting-dots" style="display:inline-flex;gap:4px;margin-top:0.5rem">
+        <div class="waiting-dot" style="width:7px;height:7px;border-radius:50%;background:var(--gold);animation:dotBounce 1.2s ease infinite"></div>
+        <div class="waiting-dot" style="width:7px;height:7px;border-radius:50%;background:var(--gold);animation:dotBounce 1.2s ease infinite;animation-delay:0.2s"></div>
+        <div class="waiting-dot" style="width:7px;height:7px;border-radius:50%;background:var(--gold);animation:dotBounce 1.2s ease infinite;animation-delay:0.4s"></div>
+      </div>
+    </div>
+
+    <!-- Active Auction Content -->
+    <div id="auction-content" style="display:none;display:flex;flex-direction:column;gap:1rem">
+
+      <!-- Player Progress -->
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem">
+        <span style="font-size:0.82rem;color:var(--text-muted)" id="player-progress-label">Player 0 / 0</span>
+        <div class="progress-bar-wrap" style="flex:1">
+          <div class="progress-bar-fill" id="player-progress-bar" style="width:0%"></div>
+        </div>
+      </div>
+
+      <!-- Timer -->
+      <div class="timer-section">
+        <div class="timer-header">
+          <span style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted)">⏱ Bid Timer</span>
+          <span class="timer-count" id="timer-display">30</span>
+        </div>
+        <div class="timer-bar-wrap">
+          <div class="timer-bar-fill" id="timer-bar" style="width:100%"></div>
+        </div>
+      </div>
+
+      <!-- Player Card -->
+      <div class="auction-player-card" id="player-card">
+        <div class="player-num" id="player-num-display">—</div>
+        <div class="player-avatar-lg" id="player-avatar" style="background:linear-gradient(135deg,#1d4ed8,#7c3aed)">?</div>
+        <div class="player-name-lg" id="player-name">Select a player</div>
+        <div class="player-meta-row">
+          <span class="badge" id="player-role-badge">—</span>
+          <span class="badge badge-blue" id="player-team-badge">—</span>
+          <span class="badge badge-purple" id="player-nation-badge">—</span>
+        </div>
+        <div class="base-price-tag">Base Price: <span id="player-base-price">—</span></div>
+      </div>
+
+      <!-- Bid Section -->
+      <div class="bid-section">
+        <div class="current-bid-label">Current Highest Bid</div>
+        <div class="bid-amount-display" id="bid-amount">₹0.00 Cr</div>
+        <div class="highest-bidder-label" id="highest-bidder-label">No bids yet — be the first!</div>
+
+        <div class="bid-controls">
+          <input class="bid-input" type="number" id="bid-input" placeholder="Enter bid (Cr)" step="0.25" min="0" />
+          <button class="btn btn-bid" id="bid-btn" onclick="placeBid()">
+            🔥 BID
+          </button>
+        </div>
+
+        <div class="quick-bids" id="quick-bids"></div>
+
+        <div style="margin-top:0.75rem;font-size:0.8rem;color:var(--text-muted);text-align:center">
+          Your Budget: <span id="my-budget-display" style="color:var(--gold);font-family:'Rajdhani',sans-serif;font-weight:700">—</span>
+        </div>
+      </div>
+
+      <!-- Host Controls -->
+      <div class="host-bar" id="host-bar" style="display:none">
+        <span class="host-bar-label">⚡ Host</span>
+        <button class="btn btn-ghost btn-sm" onclick="hostAction('next_player')">Next Player →</button>
+        <button class="btn btn-danger btn-sm" onclick="hostAction('mark_unsold')">Mark Unsold</button>
+        <button class="btn btn-ghost btn-sm" id="pause-btn" onclick="hostAction('toggle_pause')">⏸ Pause</button>
+        <button class="btn btn-ghost btn-sm" onclick="hostAction('reset_timer')">🔄 Reset Timer</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- RIGHT: Chat -->
+  <div class="chat-panel">
+    <div class="panel-title">💬 Live Chat</div>
+    <div class="chat-messages-area" id="chat-messages">
+      <div class="chat-msg system">
+        <div class="chat-msg-text">Welcome to Auction Hub! Chat with other teams here.</div>
+      </div>
+    </div>
+    <div class="chat-input-row">
+      <input class="chat-input" id="chat-input" type="text" placeholder="Type a message..." maxlength="200"
+        onkeydown="if(event.key==='Enter')sendChatMessage()" />
+      <button class="btn btn-blue btn-sm" onclick="sendChatMessage()">Send</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Result Banner (injected dynamically) -->
+<div id="result-banner-container"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="js/auction.js"></script>
+</body>
+</html>

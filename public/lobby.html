@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Auction Hub — Lobby</title>
+  <meta name="description" content="Auction Hub waiting lobby. Wait for the host to start the IPL auction." />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    body { display: flex; flex-direction: column; min-height: 100vh; }
+
+    .lobby-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 2.5rem 1.25rem 4rem;
+    }
+
+    .lobby-inner {
+      width: 100%;
+      max-width: 560px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    /* ── Room code box ── */
+    .room-code-box {
+      text-align: center;
+      padding: 1.5rem;
+      background: rgba(240,180,41,0.06);
+      border: 1px solid var(--border-gold);
+      border-radius: var(--radius-lg);
+    }
+
+    .room-code-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      margin-bottom: 0.4rem;
+    }
+
+    .room-code-value {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 3rem;
+      font-weight: 700;
+      color: var(--gold);
+      letter-spacing: 0.2em;
+      line-height: 1;
+      text-shadow: 0 0 30px rgba(240,180,41,0.4);
+      margin-bottom: 0.75rem;
+    }
+
+    .copy-hint { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.3rem; }
+
+    /* ── Team list ── */
+    .team-list { display: flex; flex-direction: column; gap: 0.6rem; }
+
+    .team-row {
+      animation: teamIn 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    }
+
+    @keyframes teamIn {
+      from { transform: translateX(-16px); opacity: 0; }
+      to   { transform: translateX(0); opacity: 1; }
+    }
+
+    .team-status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .dot-online  { background: var(--green-sold); box-shadow: 0 0 6px rgba(34,197,94,0.6); }
+    .dot-offline { background: var(--text-muted); }
+
+    /* ── Host controls ── */
+    .host-controls {
+      background: rgba(240,180,41,0.05);
+      border: 1px solid var(--border-gold);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .start-hint {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    /* ── Waiting state ── */
+    .waiting-state {
+      text-align: center;
+      padding: 2rem;
+    }
+
+    .waiting-dots {
+      display: inline-flex;
+      gap: 4px;
+      margin-top: 0.5rem;
+    }
+
+    .waiting-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--gold);
+      animation: dotBounce 1.2s ease infinite;
+    }
+
+    .waiting-dot:nth-child(2) { animation-delay: 0.2s; }
+    .waiting-dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes dotBounce {
+      0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+      40%            { transform: scale(1);   opacity: 1; }
+    }
+
+    /* ── Budget badge ── */
+    .budget-badge {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.85rem;
+      color: var(--gold);
+      background: rgba(240,180,41,0.1);
+      padding: 0.2rem 0.6rem;
+      border-radius: var(--radius-full);
+      border: 1px solid rgba(240,180,41,0.2);
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+
+<div class="animated-bg">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+</div>
+
+<div id="toast-container"></div>
+
+<!-- Navbar -->
+<nav class="navbar">
+  <div class="container">
+    <a href="/" class="nav-logo">🏏 Auction<span>Hub</span></a>
+    <div id="lobby-status-badge" class="badge badge-gold">
+      <span class="hero-dot" style="width:6px;height:6px;border-radius:50%;background:var(--green-sold);animation:dotBlink 1.2s ease infinite"></span>
+      Waiting
+    </div>
+  </div>
+</nav>
+
+<div class="lobby-wrap">
+  <div class="lobby-inner">
+
+    <!-- Room Code -->
+    <div class="room-code-box">
+      <div class="room-code-label">Room Code — Share with friends</div>
+      <div class="room-code-value" id="room-code-display">——</div>
+      <button class="btn btn-ghost btn-sm" id="copy-btn" onclick="copyRoomCode()">📋 Copy Code</button>
+      <p class="copy-hint">Friends enter this code at auctionhub to join</p>
+    </div>
+
+    <!-- Room info bar -->
+    <div class="glass-card" style="padding:1rem 1.25rem;">
+      <div class="flex-between">
+        <div>
+          <div class="section-title" style="margin-bottom:0">Room Info</div>
+          <div style="font-size:0.9rem;color:var(--text-secondary);margin-top:0.3rem">
+            Budget: <span class="budget-badge" id="budget-info">₹100 Cr</span> per team
+          </div>
+        </div>
+        <div id="room-type-badge"></div>
+      </div>
+    </div>
+
+    <!-- Teams -->
+    <div class="glass-card" style="padding:1.25rem;">
+      <div class="flex-between" style="margin-bottom:0.75rem">
+        <div class="section-title" style="margin-bottom:0">Teams (<span id="team-count">0</span>/10)</div>
+        <div style="font-size:0.78rem;color:var(--text-muted)">Min 3 to start</div>
+      </div>
+      <div class="team-list" id="team-list">
+        <div class="empty-state">Waiting for players to join...</div>
+      </div>
+    </div>
+
+    <!-- Host Controls -->
+    <div class="host-controls" id="host-controls" style="display:none">
+      <div class="flex-between">
+        <span style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:1.05rem;color:var(--gold)">
+          ⚡ Host Controls
+        </span>
+        <span class="badge badge-gold">HOST</span>
+      </div>
+      <button class="btn btn-gold btn-full" id="start-btn" onclick="startAuction()" disabled>
+        🏏 Start Auction
+      </button>
+      <p class="start-hint" id="start-hint">Need at least 3 teams to start</p>
+    </div>
+
+    <!-- Non-host waiting state -->
+    <div id="waiting-state" class="glass-card" style="display:none;padding:2rem;text-align:center">
+      <div style="font-size:2rem;margin-bottom:0.75rem">⏳</div>
+      <div style="font-family:'Rajdhani',sans-serif;font-size:1.2rem;font-weight:600;margin-bottom:0.5rem">
+        Waiting for host to start
+      </div>
+      <div style="color:var(--text-muted);font-size:0.88rem">Hang tight — the auction begins soon!</div>
+      <div class="waiting-dots">
+        <div class="waiting-dot"></div>
+        <div class="waiting-dot"></div>
+        <div class="waiting-dot"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="js/lobby.js"></script>
+</body>
+</html>

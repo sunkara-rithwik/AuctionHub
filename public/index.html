@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Auction Hub — IPL-Style Live Auction Platform</title>
+  <meta name="description" content="Create or join a live IPL-style cricket auction room. Real-time bidding, team management, and chat — no signup required." />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    /* ── Page-specific styles ── */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .hero-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 5rem 1.25rem 3rem;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 1rem;
+      background: rgba(240,180,41,0.12);
+      border: 1px solid rgba(240,180,41,0.3);
+      border-radius: 9999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 1.5rem;
+    }
+
+    .hero-dot {
+      width: 6px; height: 6px;
+      background: var(--green-sold);
+      border-radius: 50%;
+      animation: dotBlink 1.2s ease infinite;
+    }
+
+    @keyframes dotBlink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .hero-title {
+      font-size: clamp(3rem, 8vw, 6rem);
+      font-weight: 700;
+      line-height: 1.05;
+      margin-bottom: 1.25rem;
+    }
+
+    .hero-sub {
+      font-size: 1.1rem;
+      color: var(--text-secondary);
+      max-width: 480px;
+      margin: 0 auto 2.5rem;
+    }
+
+    .hero-stats {
+      display: flex;
+      gap: 2.5rem;
+      justify-content: center;
+      margin-bottom: 3.5rem;
+    }
+
+    .stat-item {
+      text-align: center;
+    }
+
+    .stat-num {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: var(--gold);
+    }
+
+    .stat-label {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+    }
+
+    /* ── Forms section ── */
+    .forms-section {
+      padding: 3rem 1.25rem 5rem;
+      position: relative;
+    }
+
+    .forms-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      max-width: 820px;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 640px) { .forms-grid { grid-template-columns: 1fr; } }
+
+    .form-header {
+      margin-bottom: 1.5rem;
+    }
+
+    .form-title {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+
+    .form-subtitle {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .form-fields { display: flex; flex-direction: column; gap: 1rem; }
+
+    .budget-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.3rem;
+    }
+
+    .budget-value {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--gold);
+    }
+
+    /* ── Public Rooms ── */
+    .public-rooms-section {
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 0 1.25rem 4rem;
+    }
+
+    .rooms-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 1rem;
+    }
+
+    .room-card {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      padding: 1rem 1.25rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+
+    .room-card:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-gold);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-gold);
+    }
+
+    .room-card-name {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+
+    .room-card-meta {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    /* ── IPL Ball SVG deco ── */
+    .hero-deco {
+      position: absolute;
+      pointer-events: none;
+      opacity: 0.06;
+    }
+
+    .cricket-balls {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .ball {
+      position: absolute;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #ef4444, #7f1d1d);
+      box-shadow: inset -3px -3px 8px rgba(0,0,0,0.4);
+      animation: ballFloat linear infinite;
+      opacity: 0.07;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Animated Background -->
+<div class="animated-bg">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+</div>
+
+<!-- Toast Container -->
+<div id="toast-container"></div>
+
+<!-- Navbar -->
+<nav class="navbar">
+  <div class="container">
+    <a href="/" class="nav-logo">🏏 Auction<span>Hub</span></a>
+    <div class="badge badge-gold">
+      <span class="hero-dot"></span> LIVE NOW
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span class="hero-dot"></span>
+      Real-Time IPL Auction
+    </div>
+
+    <h1 class="hero-title">
+      <span class="gradient-text">BID. WIN.</span><br />
+      <span style="color: var(--text-primary)">BUILD YOUR TEAM.</span>
+    </h1>
+
+    <p class="hero-sub">
+      Host live cricket auctions with friends. Real-time bidding, instant updates, no signup required.
+    </p>
+
+    <div class="hero-stats">
+      <div class="stat-item">
+        <div class="stat-num">100+</div>
+        <div class="stat-label">IPL Players</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num">10</div>
+        <div class="stat-label">Teams / Room</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num">&lt;50ms</div>
+        <div class="stat-label">Bid Sync</div>
+      </div>
+    </div>
+
+    <a href="#forms" class="btn btn-gold btn-lg" onclick="document.getElementById('forms').scrollIntoView({behavior:'smooth'});return false;">
+      Start Auction ↓
+    </a>
+  </div>
+</section>
+
+<!-- Forms -->
+<section class="forms-section" id="forms">
+  <div class="container">
+    <div class="forms-grid">
+
+      <!-- Create Room -->
+      <div class="glass-card gold-border">
+        <div class="form-header">
+          <h2 class="form-title gradient-text">Create Room</h2>
+          <p class="form-subtitle">Host your own auction as the auctioneer</p>
+        </div>
+
+        <form class="form-fields" id="create-form">
+          <div class="input-group">
+            <label class="input-label" for="host-name">Your Team Name</label>
+            <input id="host-name" class="input-field" type="text" placeholder="e.g. Mumbai Mavericks" maxlength="30" required />
+          </div>
+
+          <div class="input-group">
+            <label class="input-label">Room Type</label>
+            <div class="toggle-group">
+              <button type="button" class="toggle-btn active" id="btn-public" onclick="setRoomType('public')">🌐 Public</button>
+              <button type="button" class="toggle-btn" id="btn-private" onclick="setRoomType('private')">🔒 Private</button>
+            </div>
+          </div>
+
+          <div class="input-group">
+            <div class="budget-row">
+              <label class="input-label">Initial Budget</label>
+              <span class="budget-value" id="budget-display">₹100 Cr</span>
+            </div>
+            <input id="budget-slider" type="range" min="50" max="200" step="10" value="100"
+              oninput="document.getElementById('budget-display').textContent = '₹' + this.value + ' Cr'" />
+            <div class="flex-between" style="margin-top:0.3rem">
+              <span style="font-size:0.75rem;color:var(--text-muted)">₹50 Cr</span>
+              <span style="font-size:0.75rem;color:var(--text-muted)">₹200 Cr</span>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-gold btn-full" id="create-btn">
+            🚀 Create Room
+          </button>
+        </form>
+      </div>
+
+      <!-- Join Room -->
+      <div class="glass-card blue-border">
+        <div class="form-header">
+          <h2 class="form-title blue-text">Join Room</h2>
+          <p class="form-subtitle">Enter a room code to join as a bidder</p>
+        </div>
+
+        <form class="form-fields" id="join-form">
+          <div class="input-group">
+            <label class="input-label" for="team-name">Your Team Name</label>
+            <input id="team-name" class="input-field blue-focus" type="text" placeholder="e.g. Chennai Kings" maxlength="30" required />
+          </div>
+
+          <div class="input-group">
+            <label class="input-label" for="room-code">Room Code</label>
+            <input id="room-code" class="input-field blue-focus" type="text" placeholder="e.g. AB3X9Z"
+              maxlength="6" style="text-transform:uppercase;letter-spacing:0.15em;font-size:1.1rem;text-align:center" required />
+          </div>
+
+          <button type="submit" class="btn btn-blue btn-full" id="join-btn">
+            🏏 Join Auction
+          </button>
+        </form>
+
+        <!-- Public rooms list -->
+        <div id="public-rooms-wrap" style="margin-top:1.25rem">
+          <div class="section-title">Public Rooms</div>
+          <div id="public-rooms-list">
+            <div class="empty-state">Loading rooms...</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<script src="js/home.js"></script>
+</body>
+</html>
