@@ -83,9 +83,9 @@ app.post('/api/rooms', async (req, res) => {
 
     // Create the host as first team
     const { rows: teamRows } = await db.query(
-      `INSERT INTO teams (room_id, team_name, remaining_budget, is_host)
-       VALUES ($1, $2, $3, true) RETURNING *`,
-      [roomId, hostName.trim(), budget]
+      `INSERT INTO teams (room_id, team_name, socket_id, remaining_budget, is_host)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [roomId, hostName.trim(), null, budget, true]
     );
     const team = teamRows[0];
     hostMap.set(roomId, team.team_id);
@@ -118,9 +118,9 @@ app.post('/api/rooms/:id/join', async (req, res) => {
       return res.status(400).json({ error: 'Team name already taken in this room' });
 
     const { rows: teamRows } = await db.query(
-      `INSERT INTO teams (room_id, team_name, remaining_budget, is_host)
-       VALUES ($1, $2, $3, false) RETURNING *`,
-      [roomId, teamName.trim(), room.initial_budget]
+      `INSERT INTO teams (room_id, team_name, socket_id, remaining_budget, is_host)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [roomId, teamName.trim(), null, room.initial_budget, false]
     );
     const team = teamRows[0];
 
@@ -162,12 +162,14 @@ app.get('/api/rooms/:id', async (req, res) => {
 });
 
 // ─── Auction Timer Logic ──────────────────────────────────────────────────────
+const AUCTION_TIMER_SECS = 15;
+
 function startTimer(roomId) {
   const state = auctionStates.get(roomId);
   if (!state) return;
 
   clearInterval(state.timerInterval);
-  state.timeLeft = 30;
+  state.timeLeft = AUCTION_TIMER_SECS;
 
   state.timerInterval = setInterval(async () => {
     if (state.isPaused) return;
@@ -292,6 +294,14 @@ io.on('connection', (socket) => {
     // If auction already running, send current state
     const state = auctionStates.get(roomId);
     if (state) {
+      // If host reconnects and auction was paused due to disconnect, auto-resume
+      const hostTeamId = hostMap.get(roomId);
+      if (Number(teamId) === hostTeamId && state.isPaused) {
+        state.isPaused = false;
+        io.to(roomId).emit('auction_paused', { isPaused: false });
+        io.to(roomId).emit('host_reconnected', { message: 'Host reconnected. Auction resumed!' });
+      }
+
       socket.emit('auction_state_sync', {
         player:       state.currentPlayer,
         currentBid:   state.currentBid,
@@ -338,20 +348,35 @@ io.on('connection', (socket) => {
     // Mark room active
     await db.query(`UPDATE rooms SET status = 'active' WHERE room_id = $1`, [roomId]);
 
-    // Build shuffled player list
-    let playerList;
-    if (db.players) {
-      // In-memory store — use seeded players
-      playerList = shuffleArray(db.players);
-    } else {
-      const { rows } = await db.query('SELECT * FROM ipl_players ORDER BY RANDOM()');
-      playerList = rows;
+    // Role order for auction sequence
+    const ROLE_ORDER = ['Batsman', 'All-Rounder', 'Wicketkeeper', 'Pacer', 'Spinner'];
+
+    function orderPlayersByRole(players) {
+      const groups = {};
+      ROLE_ORDER.forEach(r => { groups[r] = []; });
+      const others = [];
+      for (const p of players) {
+        if (groups[p.role] !== undefined) groups[p.role].push(p);
+        else others.push(p);
+      }
+      // Shuffle within each group for variety, then concatenate in role order
+      return [...ROLE_ORDER.flatMap(r => shuffleArray(groups[r])), ...shuffleArray(others)];
     }
 
-    if (playerList.length === 0) {
-      // fallback: use seed module's players array
-      playerList = shuffleArray(seedPlayers.map((p, i) => ({ player_id: i + 1, ...p })));
+    // Build player list
+    let rawList;
+    if (db.players) {
+      rawList = db.players;
+    } else {
+      const { rows } = await db.query('SELECT * FROM ipl_players');
+      rawList = rows;
     }
+
+    if (rawList.length === 0) {
+      rawList = seedPlayers.map((p, i) => ({ player_id: i + 1, ...p }));
+    }
+
+    const playerList = orderPlayersByRole(rawList);
 
     auctionStates.set(roomId, {
       players:           playerList,
@@ -361,7 +386,7 @@ io.on('connection', (socket) => {
       highestBidderId:   null,
       highestBidderName: null,
       timerInterval:     null,
-      timeLeft:          30,
+      timeLeft:          AUCTION_TIMER_SECS,
       isPaused:          false,
       soldList:          [],
     });

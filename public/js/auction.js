@@ -21,7 +21,7 @@ let currentIndex     = 0;
 let isPaused         = false;
 let allTeams         = [];
 let soldList         = [];
-const TIMER_MAX      = 30;
+const TIMER_MAX      = 15;
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
 function toast(msg, type = 'info') {
@@ -62,10 +62,12 @@ function avatarGrad(name) {
 
 function roleClass(role) {
   const map = {
-    'Batsman': 'badge-blue',
-    'Bowler': 'badge-green',
-    'All-Rounder': 'badge-gold',
+    'Batsman':      'badge-blue',
+    'Bowler':       'badge-green',
+    'All-Rounder':  'badge-gold',
     'Wicketkeeper': 'badge-purple',
+    'Pacer':        'badge-green',
+    'Spinner':      'badge-red',
   };
   return map[role] || 'badge-blue';
 }
@@ -451,6 +453,11 @@ socket.on('host_disconnected', ({ message }) => {
   toast(message, 'warning');
   document.getElementById('pause-overlay').classList.add('active');
   isPaused = true;
+});
+
+// Host reconnected
+socket.on('host_reconnected', ({ message }) => {
+  toast(message, 'success');
 });
 
 // Kicked

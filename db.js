@@ -44,10 +44,19 @@ class MemoryStore {
     }
 
     // ── INSERT team ──────────────────────────────────────────────────────────
+    // Params are always: [room_id, team_name, socket_id, remaining_budget, is_host]
     if (s.startsWith('insert into teams')) {
       const [room_id, team_name, socket_id, remaining_budget, is_host] = params;
       const team_id = this._nextTeamId++;
-      const team = { team_id, room_id, team_name, socket_id, remaining_budget, is_host, joined_at: new Date() };
+      const team = {
+        team_id,
+        room_id,
+        team_name,
+        socket_id: socket_id ?? null,
+        remaining_budget: Number(remaining_budget),
+        is_host: !!is_host,
+        joined_at: new Date(),
+      };
       this.teams.set(team_id, team);
       return { rows: [team] };
     }
@@ -71,10 +80,10 @@ class MemoryStore {
       return { rows: [] };
     }
 
-    // ── UPDATE team budget ────────────────────────────────────────────────────
+    // ── UPDATE team budget (remaining_budget = remaining_budget - $1) ──────────
     if (s.startsWith('update teams') && s.includes('remaining_budget')) {
       const team = this.teams.get(Number(params[1]));
-      if (team) team.remaining_budget = params[0];
+      if (team) team.remaining_budget = Number(team.remaining_budget) - Number(params[0]);
       return { rows: [] };
     }
 
