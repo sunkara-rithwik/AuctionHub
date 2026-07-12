@@ -662,37 +662,269 @@ socket.on('player_kicked', ({ message }) => {
   setTimeout(() => { window.location.href = '/'; }, 2500);
 });
 
+// ─── Squad Score Calculation ──────────────────────────────────────────────────
+function calculateSquadScore(squad) {
+  if (!squad || !squad.players || squad.players.length === 0) {
+    return { rating: 0, grade: 'F', totalBought: 0, details: 'No players purchased.' };
+  }
+
+  let totalRating = 0;
+  let hasWk = false;
+  let batCount = 0;
+  let arCount = 0;
+  let pacerCount = 0;
+  let spinnerCount = 0;
+  let overseasCount = 0;
+
+  squad.players.forEach(p => {
+    let r = 60;
+    const bp = Number(p.base_price);
+    if (bp >= 2.00) r = 95;
+    else if (bp >= 1.75) r = 90;
+    else if (bp >= 1.50) r = 85;
+    else if (bp >= 1.25) r = 80;
+    else if (bp >= 1.00) r = 75;
+    else if (bp >= 0.75) r = 70;
+    else r = 65;
+
+    totalRating += r;
+
+    if (p.role === 'Wicketkeeper') hasWk = true;
+    else if (p.role === 'Batsman') batCount++;
+    else if (p.role === 'All-Rounder') arCount++;
+    else if (p.role === 'Pacer') pacerCount++;
+    else if (p.role === 'Spinner') spinnerCount++;
+
+    if (p.nationality !== 'Indian') overseasCount++;
+  });
+
+  const count = squad.players.length;
+  let avgRating = totalRating / count;
+
+  // Penalties for poor balance
+  let penalty = 0;
+  if (count < 11) {
+    penalty += (11 - count) * 6; // Heavy penalty for not having 11 players
+  }
+  if (!hasWk) penalty += 15; // Wicketkeeper is essential
+  if (batCount < 3) penalty += (3 - batCount) * 5;
+  if (arCount < 1) penalty += 8;
+  const bowlers = pacerCount + spinnerCount;
+  if (bowlers < 3) penalty += (3 - bowlers) * 5;
+
+  // Overseas balance check
+  if (overseasCount > 8) penalty += (overseasCount - 8) * 5;
+
+  // Depth bonus: slightly rewards buying options above 11 players
+  const depthBonus = Math.min(6, Math.max(0, count - 11) * 0.4);
+
+  let finalScore = avgRating + depthBonus - penalty;
+  finalScore = Math.max(10, Math.min(100, Math.round(finalScore)));
+
+  let grade = 'C';
+  if (finalScore >= 90) grade = 'A+';
+  else if (finalScore >= 80) grade = 'A';
+  else if (finalScore >= 70) grade = 'B+';
+  else if (finalScore >= 60) grade = 'B';
+  else if (finalScore >= 50) grade = 'C+';
+  else if (finalScore >= 40) grade = 'C';
+  else grade = 'D';
+
+  return {
+    rating: finalScore,
+    grade,
+    totalBought: count,
+    indianCount: count - overseasCount,
+    foreignerCount: overseasCount,
+    hasWk,
+    batCount,
+    arCount,
+    bowlCount: bowlers,
+    avgRating: Math.round(avgRating)
+  };
+}
+
+// ─── AI Best Playing 11 Selector ──────────────────────────────────────────────
+function selectBestPlaying11(players) {
+  if (!players || players.length === 0) return { playing11: [], bench: [] };
+
+  const getPlayerVal = p => {
+    const bp = Number(p.base_price);
+    if (bp >= 2.0) return 95;
+    if (bp >= 1.75) return 90;
+    if (bp >= 1.5) return 85;
+    if (bp >= 1.25) return 80;
+    if (bp >= 1.0) return 75;
+    if (bp >= 0.75) return 70;
+    return 65;
+  };
+
+  const pool = [...players].map(p => ({ ...p, ratingVal: getPlayerVal(p) }));
+  pool.sort((a, b) => b.ratingVal - a.ratingVal);
+
+  const wks = pool.filter(p => p.role === 'Wicketkeeper');
+  const bats = pool.filter(p => p.role === 'Batsman');
+  const ars = pool.filter(p => p.role === 'All-Rounder');
+  const bowlers = pool.filter(p => p.role === 'Pacer' || p.role === 'Spinner');
+
+  const selected = [];
+
+  // Pick WK
+  if (wks.length > 0) selected.push(wks[0]);
+
+  // Pick top 3 Batsmen
+  bats.slice(0, 3).forEach(p => selected.push(p));
+
+  // Pick top 2 All-Rounders
+  ars.slice(0, 2).forEach(p => selected.push(p));
+
+  // Pick top 3 Bowlers
+  bowlers.slice(0, 3).forEach(p => selected.push(p));
+
+  // Fill up to 11
+  const remaining = pool.filter(p => !selected.includes(p));
+  for (let i = 0; i < remaining.length; i++) {
+    if (selected.length >= 11) break;
+    selected.push(remaining[i]);
+  }
+
+  // Overseas swap check
+  let overseas = selected.filter(p => p.nationality !== 'Indian');
+  if (overseas.length > 4) {
+    overseas.sort((a, b) => a.ratingVal - b.ratingVal);
+    const indianBench = pool.filter(p => p.nationality === 'Indian' && !selected.includes(p));
+    indianBench.sort((a, b) => b.ratingVal - a.ratingVal);
+
+    const swapsNeeded = overseas.length - 4;
+    for (let i = 0; i < swapsNeeded; i++) {
+      if (indianBench[i]) {
+        const removeIdx = selected.indexOf(overseas[i]);
+        if (removeIdx > -1) {
+          selected.splice(removeIdx, 1);
+          selected.push(indianBench[i]);
+        }
+      }
+    }
+  }
+
+  const playing11 = selected;
+  const bench = pool.filter(p => !playing11.includes(p));
+
+  return { playing11, bench };
+}
+
+// ─── Post-Game View Squad Details ─────────────────────────────────────────────
+window.viewEndedTeamDetail = function(teamIdStr) {
+  const tid = parseInt(teamIdStr, 10);
+  const team = allTeams.find(t => t.team_id === tid);
+  if (!team) return;
+
+  document.querySelectorAll('.ended-card').forEach(el => {
+    el.classList.toggle('selected', parseInt(el.getAttribute('data-team-id'), 10) === tid);
+  });
+
+  const squad = teamSquads[tid] || { players: [] };
+  const evaluation = calculateSquadScore(squad);
+  const { playing11, bench } = selectBestPlaying11(squad.players);
+
+  document.getElementById('ended-team-detail-empty').style.display = 'none';
+  document.getElementById('ended-team-detail').style.display = 'flex';
+
+  document.getElementById('ended-detail-team-name').textContent = team.team_name;
+  document.getElementById('ended-detail-team-stats').textContent = 
+    `Remaining Budget: ₹${Number(team.remaining_budget).toFixed(2)} Cr | Total Bought: ${evaluation.totalBought} players`;
+  
+  const gradeEl = document.getElementById('ended-detail-team-grade');
+  gradeEl.textContent = evaluation.grade;
+  
+  if (evaluation.rating >= 80) gradeEl.style.color = 'var(--green-sold)';
+  else if (evaluation.rating >= 65) gradeEl.style.color = 'var(--gold)';
+  else gradeEl.style.color = '#ef4444';
+
+  document.getElementById('ended-detail-team-rating').textContent = `Rating: ${evaluation.rating}/100`;
+  document.getElementById('ended-detail-squad-count').textContent = squad.players.length;
+
+  const rosterContainer = document.getElementById('ended-detail-roster');
+  if (squad.players.length === 0) {
+    rosterContainer.innerHTML = '<div class="empty-state">No players bought</div>';
+  } else {
+    rosterContainer.innerHTML = [...squad.players]
+      .sort((a,b) => Number(b.bid || b.base_price) - Number(a.bid || a.base_price))
+      .map(p => `
+        <div class="squad-player-row">
+          <span class="squad-player-name">${escapeHtml(p.name)}</span>
+          <span class="badge ${roleClass(p.role)}" style="font-size:0.65rem;padding:0.1rem 0.35rem">${escapeHtml(p.role)}</span>
+          <span style="font-size:0.75rem">${p.nationality === 'Indian' ? '🇮🇳' : '🌍'}</span>
+          <span class="squad-player-price">₹${Number(p.bid || p.base_price).toFixed(2)}Cr</span>
+        </div>`).join('');
+  }
+
+  const p11Container = document.getElementById('ended-detail-playing11');
+  if (playing11.length === 0) {
+    p11Container.innerHTML = '<div class="empty-state">Not enough players to form playing 11</div>';
+  } else {
+    let html = playing11.map((p, idx) => `
+      <div class="squad-player-row" style="border-left: 3px solid ${p.nationality !== 'Indian' ? 'var(--purple)' : 'var(--blue-bright)'}; padding-left: 0.5rem">
+        <span style="font-family:'Rajdhani',sans-serif;font-weight:700;color:var(--text-secondary);margin-right:0.3rem">${idx + 1}.</span>
+        <span class="squad-player-name" style="font-weight:600">${escapeHtml(p.name)}</span>
+        <span class="badge ${roleClass(p.role)}" style="font-size:0.62rem;padding:0.05rem 0.3rem">${escapeHtml(p.role)}</span>
+        <span>${p.nationality === 'Indian' ? '🇮🇳' : '🌍'}</span>
+        <span class="squad-player-price">₹${Number(p.bid || p.base_price).toFixed(2)}Cr</span>
+      </div>`).join('');
+
+    if (bench.length > 0) {
+      html += `<div style="font-family:'Rajdhani',sans-serif;font-size:0.75rem;text-transform:uppercase;color:var(--text-muted);margin:0.75rem 0 0.25rem">Bench (${bench.length})</div>`;
+      html += bench.map(p => `
+        <div class="squad-player-row" style="opacity: 0.65">
+          <span class="squad-player-name">${escapeHtml(p.name)}</span>
+          <span class="badge ${roleClass(p.role)}" style="font-size:0.62rem;padding:0.05rem 0.3rem">${escapeHtml(p.role)}</span>
+          <span>${p.nationality === 'Indian' ? '🇮🇳' : '🌍'}</span>
+          <span class="squad-player-price">₹${Number(p.bid || p.base_price).toFixed(2)}Cr</span>
+        </div>`).join('');
+    }
+    p11Container.innerHTML = html;
+  }
+};
+
 // Auction ended
 socket.on('auction_ended', ({ teams, soldList: list }) => {
   document.getElementById('ended-overlay').style.display = 'block';
   document.body.style.overflow = 'hidden';
 
+  // Calculate scores for all teams
+  const teamsWithScores = teams.map(t => {
+    const squad = teamSquads[t.team_id] || { players: [] };
+    const scoreInfo = calculateSquadScore(squad);
+    return { ...t, scoreInfo };
+  });
+
+  // Rank teams by scoreInfo.rating (descending)
+  teamsWithScores.sort((a, b) => b.scoreInfo.rating - a.scoreInfo.rating);
+
   const teamsContainer = document.getElementById('final-teams');
-  const sorted = [...teams].sort((a, b) => Number(b.remaining_budget) - Number(a.remaining_budget));
-  teamsContainer.innerHTML = sorted.map((t, i) => {
-    const squad = teamSquads[t.team_id] || { players: [], indianCount: 0, foreignerCount: 0 };
+  teamsContainer.innerHTML = teamsWithScores.map((t, i) => {
+    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '🏅';
     return `
-      <div class="result-card">
-        <div style="font-size:1.5rem;margin-bottom:0.4rem">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '🏅'}</div>
-        <div style="font-family:'Rajdhani',sans-serif;font-size:1.1rem;font-weight:700">${escapeHtml(t.team_name)}</div>
-        <div style="color:var(--gold);font-family:'Rajdhani',sans-serif;margin-top:0.2rem">₹${Number(t.remaining_budget).toFixed(2)} Cr left</div>
-        <div style="font-size:0.78rem;color:var(--text-muted);margin-top:0.3rem">
-          ${squad.players.length} players · 🇮🇳 ${squad.indianCount} · 🌍 ${squad.foreignerCount}
+      <div class="ended-card" data-team-id="${t.team_id}" onclick="viewEndedTeamDetail('${t.team_id}')">
+        <div class="flex-between">
+          <span style="font-size:1.3rem;margin-right:0.4rem">${medal}</span>
+          <div style="flex:1">
+            <div style="font-family:'Rajdhani',sans-serif;font-size:1rem;font-weight:700">${escapeHtml(t.team_name)}</div>
+            <div style="font-size:0.75rem;color:var(--text-muted)">
+              ${t.scoreInfo.totalBought} players · Rating: ${t.scoreInfo.rating}/100
+            </div>
+          </div>
+          <div style="font-family:'Rajdhani',sans-serif;font-size:1.3rem;font-weight:700;color:var(--gold)">
+            ${t.scoreInfo.grade}
+          </div>
         </div>
-        ${t.is_host ? '<span class="badge badge-gold" style="margin-top:0.4rem">HOST</span>' : ''}
       </div>`;
   }).join('');
 
-  const soldContainer = document.getElementById('final-sold-list');
-  soldContainer.innerHTML = (list || []).map(item => `
-    <div class="sold-item ${!item.teamId ? 'unsold-item' : ''}">
-      <span class="sold-player-name">${escapeHtml(item.player.name)}</span>
-      <span style="font-size:0.78rem;color:var(--text-muted)">${escapeHtml(item.player.role || '')}</span>
-      ${!item.teamId
-        ? '<span class="badge badge-red" style="font-size:0.65rem">UNSOLD</span>'
-        : `<span class="sold-bid">₹${Number(item.bid).toFixed(2)}Cr</span>
-           <span class="sold-team">${escapeHtml(item.teamName)}</span>`}
-    </div>`).join('');
+  // Auto-select the 1st ranked team for detail view
+  if (teamsWithScores.length > 0) {
+    viewEndedTeamDetail(teamsWithScores[0].team_id);
+  }
 });
 
 // Chat messages
