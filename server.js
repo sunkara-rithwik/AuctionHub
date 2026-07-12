@@ -37,6 +37,24 @@ const ROLE_SETS = [
 const auctionStates = new Map();
 const hostMap       = new Map();
 
+// Helper to verify if a socket belongs to the host of a room
+async function verifyIsHost(socket, roomId) {
+  if (!roomId) return false;
+  roomId = roomId.toUpperCase();
+  let hostTeamId = hostMap.get(roomId);
+  if (!hostTeamId) {
+    const { rows } = await db.query(
+      'SELECT team_id FROM teams WHERE room_id = $1 AND is_host = true LIMIT 1',
+      [roomId]
+    );
+    if (rows.length > 0) {
+      hostTeamId = rows[0].team_id;
+      hostMap.set(roomId, hostTeamId);
+    }
+  }
+  return socket.data.teamId === hostTeamId;
+}
+
 // ─── Utility ──────────────────────────────────────────────────────────────────
 function generateRoomId() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -404,8 +422,7 @@ io.on('connection', (socket) => {
   // ── kick_player ────────────────────────────────────────────────────────────
   socket.on('kick_player', async ({ roomId, targetTeamId }) => {
     roomId = roomId.toUpperCase();
-    const hostTeamId = hostMap.get(roomId);
-    if (socket.data.teamId !== hostTeamId) return;
+    if (!await verifyIsHost(socket, roomId)) return;
 
     const { rows } = await db.query('SELECT * FROM teams WHERE team_id = $1', [targetTeamId]);
     if (rows.length === 0) return;
@@ -420,70 +437,74 @@ io.on('connection', (socket) => {
 
   // ── start_auction ──────────────────────────────────────────────────────────
   socket.on('start_auction', async ({ roomId }) => {
-    roomId = roomId.toUpperCase();
-    const hostTeamId = hostMap.get(roomId);
-    if (socket.data.teamId !== hostTeamId) return;
+    try {
+      roomId = roomId.toUpperCase();
+      if (!await verifyIsHost(socket, roomId)) return;
 
-    const teams = await getRoomTeams(roomId);
-    if (teams.length < 3) {
-      socket.emit('error_msg', { message: 'Need at least 3 teams to start.' });
-      return;
+      const teams = await getRoomTeams(roomId);
+      if (teams.length < 3) {
+        socket.emit('error_msg', { message: 'Need at least 3 teams to start.' });
+        return;
+      }
+
+      await db.query(`UPDATE rooms SET status = 'active' WHERE room_id = $1`, [roomId]);
+
+      // Fetch player list
+      let rawList;
+      if (db.players) {
+        rawList = db.players;
+      } else {
+        const { rows } = await db.query('SELECT * FROM ipl_players');
+        rawList = rows;
+      }
+      if (rawList.length === 0) {
+        rawList = seedPlayers.map((p, i) => ({ player_id: i + 1, ...p }));
+      }
+
+      // Group into role sets, shuffle within each
+      const sets = ROLE_SETS
+        .map(({ label, role }) => ({
+          label,
+          role,
+          players: shuffleArray(rawList.filter(p => p.role === role)),
+        }))
+        .filter(s => s.players.length > 0);
+
+      const totalPlayers = sets.reduce((sum, s) => sum + s.players.length, 0);
+
+      auctionStates.set(roomId, {
+        sets,
+        currentSetIndex:   0,
+        currentPlayerInSet: 0,
+        waitingForSetStart: true,
+        currentPlayer:     null,
+        currentBid:        0,
+        highestBidderId:   null,
+        highestBidderName: null,
+        lastBidderId:      null,
+        timerInterval:     null,
+        timeLeft:          AUCTION_TIMER_SECS,
+        isPaused:          false,
+        soldList:          [],
+        teamSquads:        {},
+        globalPlayerIndex: 0,
+        totalPlayers,
+      });
+
+      // Tell everyone auction is initialised, then show Set 1 preview
+      io.to(roomId).emit('auction_started', { totalPlayers, totalSets: sets.length });
+      io.to(roomId).emit('auction_initialized', { totalPlayers, totalSets: sets.length });
+      emitSetPreview(roomId, auctionStates.get(roomId));
+    } catch (e) {
+      console.error('Error starting auction:', e);
+      socket.emit('error_msg', { message: 'Failed to start auction: ' + e.message });
     }
-
-    await db.query(`UPDATE rooms SET status = 'active' WHERE room_id = $1`, [roomId]);
-
-    // Fetch player list
-    let rawList;
-    if (db.players) {
-      rawList = db.players;
-    } else {
-      const { rows } = await db.query('SELECT * FROM ipl_players');
-      rawList = rows;
-    }
-    if (rawList.length === 0) {
-      rawList = seedPlayers.map((p, i) => ({ player_id: i + 1, ...p }));
-    }
-
-    // Group into role sets, shuffle within each
-    const sets = ROLE_SETS
-      .map(({ label, role }) => ({
-        label,
-        role,
-        players: shuffleArray(rawList.filter(p => p.role === role)),
-      }))
-      .filter(s => s.players.length > 0);
-
-    const totalPlayers = sets.reduce((sum, s) => sum + s.players.length, 0);
-
-    auctionStates.set(roomId, {
-      sets,
-      currentSetIndex:   0,
-      currentPlayerInSet: 0,
-      waitingForSetStart: true,
-      currentPlayer:     null,
-      currentBid:        0,
-      highestBidderId:   null,
-      highestBidderName: null,
-      lastBidderId:      null,
-      timerInterval:     null,
-      timeLeft:          AUCTION_TIMER_SECS,
-      isPaused:          false,
-      soldList:          [],
-      teamSquads:        {},
-      globalPlayerIndex: 0,
-      totalPlayers,
-    });
-
-    // Tell everyone auction is initialised, then show Set 1 preview
-    io.to(roomId).emit('auction_initialized', { totalPlayers, totalSets: sets.length });
-    emitSetPreview(roomId, auctionStates.get(roomId));
   });
 
   // ── start_set (host only) ──────────────────────────────────────────────────
-  socket.on('start_set', ({ roomId }) => {
+  socket.on('start_set', async ({ roomId }) => {
     roomId = roomId.toUpperCase();
-    const hostTeamId = hostMap.get(roomId);
-    if (socket.data.teamId !== hostTeamId) return;
+    if (!await verifyIsHost(socket, roomId)) return;
 
     const state = auctionStates.get(roomId);
     if (!state || !state.waitingForSetStart) return;
@@ -575,8 +596,7 @@ io.on('connection', (socket) => {
   // ── next_player (host) ─────────────────────────────────────────────────────
   socket.on('next_player', async ({ roomId }) => {
     roomId = roomId.toUpperCase();
-    const hostTeamId = hostMap.get(roomId);
-    if (socket.data.teamId !== hostTeamId) return;
+    if (!await verifyIsHost(socket, roomId)) return;
     const state = auctionStates.get(roomId);
     if (!state) return;
     clearInterval(state.timerInterval);
@@ -591,16 +611,14 @@ io.on('connection', (socket) => {
   // ── mark_unsold (host) ─────────────────────────────────────────────────────
   socket.on('mark_unsold', async ({ roomId }) => {
     roomId = roomId.toUpperCase();
-    const hostTeamId = hostMap.get(roomId);
-    if (socket.data.teamId !== hostTeamId) return;
+    if (!await verifyIsHost(socket, roomId)) return;
     await markUnsold(roomId);
   });
 
   // ── toggle_pause (host) ────────────────────────────────────────────────────
-  socket.on('toggle_pause', ({ roomId }) => {
+  socket.on('toggle_pause', async ({ roomId }) => {
     roomId = roomId.toUpperCase();
-    const hostTeamId = hostMap.get(roomId);
-    if (socket.data.teamId !== hostTeamId) return;
+    if (!await verifyIsHost(socket, roomId)) return;
     const state = auctionStates.get(roomId);
     if (!state) return;
     state.isPaused = !state.isPaused;
@@ -608,10 +626,9 @@ io.on('connection', (socket) => {
   });
 
   // ── reset_timer (host) ─────────────────────────────────────────────────────
-  socket.on('reset_timer', ({ roomId }) => {
+  socket.on('reset_timer', async ({ roomId }) => {
     roomId = roomId.toUpperCase();
-    const hostTeamId = hostMap.get(roomId);
-    if (socket.data.teamId !== hostTeamId) return;
+    if (!await verifyIsHost(socket, roomId)) return;
     resetTimer(roomId);
     io.to(roomId).emit('timer_reset', { timeLeft: AUCTION_TIMER_SECS });
   });
