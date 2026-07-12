@@ -471,7 +471,13 @@
 <div class="pause-overlay" id="pause-overlay">
   <div class="pause-icon">⏸️</div>
   <div class="pause-title">Auction Paused</div>
-  <div style="color:var(--text-muted)">Waiting for the host to resume...</div>
+  <div id="pause-subtitle" style="color:var(--text-muted)">Waiting for the host to resume...</div>
+  <!-- Shown only to the host -->
+  <button id="host-resume-btn"
+    style="display:none;margin-top:1rem;padding:0.75rem 2rem;background:var(--gold);color:#000;font-weight:700;font-size:1rem;border:none;border-radius:9999px;cursor:pointer;letter-spacing:0.05em"
+    onclick="hostAction('toggle_pause')">
+    ▶ Resume Auction
+  </button>
 </div>
 
 <!-- Ended Overlay -->

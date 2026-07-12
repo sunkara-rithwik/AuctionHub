@@ -314,6 +314,21 @@ function showResultBanner(type, title, subtitle) {
   }, 2800);
 }
 
+// ─── Show / Hide Pause Overlay ───────────────────────────────────────────────
+function setPauseOverlay(active) {
+  const overlay   = document.getElementById('pause-overlay');
+  const resumeBtn = document.getElementById('host-resume-btn');
+  const subtitle  = document.getElementById('pause-subtitle');
+  overlay.classList.toggle('active', active);
+  if (active && isHost) {
+    resumeBtn.style.display = 'block';
+    subtitle.textContent    = 'You are the host — click Resume to continue.';
+  } else {
+    resumeBtn.style.display = 'none';
+    subtitle.textContent    = 'Waiting for the host to resume...';
+  }
+}
+
 // ─── Show Auction Content ─────────────────────────────────────────────────────
 function showAuctionContent() {
   document.getElementById('waiting-screen').style.display  = 'none';
@@ -383,7 +398,7 @@ socket.on('auction_state_sync', (state) => {
     renderSoldHistory();
     if (state.isPaused) {
       isPaused = true;
-      document.getElementById('pause-overlay').classList.add('active');
+      setPauseOverlay(true);
     }
   }
 });
@@ -441,8 +456,7 @@ socket.on('player_unsold', ({ player, soldList: list }) => {
 // Auction paused/resumed
 socket.on('auction_paused', ({ isPaused: paused }) => {
   isPaused = paused;
-  const overlay = document.getElementById('pause-overlay');
-  overlay.classList.toggle('active', paused);
+  setPauseOverlay(paused);
   const btn = document.getElementById('pause-btn');
   if (btn) btn.textContent = paused ? '▶ Resume' : '⏸ Pause';
   addChatMsg({ message: paused ? '⏸ Auction paused by host' : '▶ Auction resumed!' }, true);
@@ -451,7 +465,7 @@ socket.on('auction_paused', ({ isPaused: paused }) => {
 // Host disconnected
 socket.on('host_disconnected', ({ message }) => {
   toast(message, 'warning');
-  document.getElementById('pause-overlay').classList.add('active');
+  setPauseOverlay(true);
   isPaused = true;
 });
 

@@ -291,6 +291,17 @@ io.on('connection', (socket) => {
     await db.query('UPDATE teams SET socket_id = $1 WHERE team_id = $2', [socket.id, teamId]);
     await emitRoomUpdate(roomId);
 
+    // ── Restore hostMap from DB if lost (e.g. after server restart) ──────
+    if (!hostMap.has(roomId)) {
+      const { rows: hostRows } = await db.query(
+        'SELECT team_id FROM teams WHERE room_id = $1 AND is_host = true LIMIT 1',
+        [roomId]
+      );
+      if (hostRows.length > 0) {
+        hostMap.set(roomId, hostRows[0].team_id);
+      }
+    }
+
     // If auction already running, send current state
     const state = auctionStates.get(roomId);
     if (state) {
