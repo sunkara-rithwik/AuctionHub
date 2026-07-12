@@ -20,13 +20,22 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ─── In-Memory Auction State ──────────────────────────────────────────────────
-// roomId → { players[], currentIndex, currentPlayer, currentBid, highestBidderId,
-//            highestBidderName, timerInterval, timeLeft, isPaused, soldList[] }
-const auctionStates = new Map();
+// ─── Squad & Auction Constants ────────────────────────────────────────────────
+const MAX_SQUAD_SIZE = 25;
+const MAX_INDIANS    = 17;
+const MAX_FOREIGNERS = 8;
 
-// roomId → teamId (host tracking)
-const hostMap = new Map();
+const ROLE_SETS = [
+  { label: 'Set 1 — Batsmen',        role: 'Batsman'      },
+  { label: 'Set 2 — All-Rounders',   role: 'All-Rounder'  },
+  { label: 'Set 3 — Wicketkeepers',  role: 'Wicketkeeper' },
+  { label: 'Set 4 — Pace Bowlers',   role: 'Pacer'        },
+  { label: 'Set 5 — Spinners',       role: 'Spinner'      },
+];
+
+// ─── In-Memory State ──────────────────────────────────────────────────────────
+const auctionStates = new Map();
+const hostMap       = new Map();
 
 // ─── Utility ──────────────────────────────────────────────────────────────────
 function generateRoomId() {
@@ -81,7 +90,6 @@ app.post('/api/rooms', async (req, res) => {
       [roomId, hostName.trim(), !!isPrivate, budget]
     );
 
-    // Create the host as first team
     const { rows: teamRows } = await db.query(
       `INSERT INTO teams (room_id, team_name, socket_id, remaining_budget, is_host)
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
@@ -113,7 +121,6 @@ app.post('/api/rooms/:id/join', async (req, res) => {
     const teams = await getRoomTeams(roomId);
     if (teams.length >= 10) return res.status(400).json({ error: 'Room is full (max 10 teams)' });
 
-    // Check duplicate name
     if (teams.some(t => t.team_name.toLowerCase() === teamName.trim().toLowerCase()))
       return res.status(400).json({ error: 'Team name already taken in this room' });
 
@@ -142,7 +149,7 @@ app.get('/api/rooms/public', async (req, res) => {
        GROUP BY r.room_id
        ORDER BY r.created_at DESC LIMIT 20`
     );
-    res.json({ rooms: rows });
+    res.json({ rows });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch rooms', rooms: [] });
   }
@@ -161,7 +168,7 @@ app.get('/api/rooms/:id', async (req, res) => {
   }
 });
 
-// ─── Auction Timer Logic ──────────────────────────────────────────────────────
+// ─── Auction Timer ────────────────────────────────────────────────────────────
 const AUCTION_TIMER_SECS = 15;
 
 function startTimer(roomId) {
@@ -178,7 +185,6 @@ function startTimer(roomId) {
 
     if (state.timeLeft <= 0) {
       clearInterval(state.timerInterval);
-      // Auto-sell or unsold
       if (state.highestBidderId) {
         await sellCurrentPlayer(roomId);
       } else {
@@ -195,17 +201,31 @@ function resetTimer(roomId) {
   startTimer(roomId);
 }
 
+// ─── Helper: emit set_preview ─────────────────────────────────────────────────
+function emitSetPreview(roomId, state) {
+  const set = state.sets[state.currentSetIndex];
+  io.to(roomId).emit('set_preview', {
+    setIndex:    state.currentSetIndex,
+    setNumber:   state.currentSetIndex + 1,
+    label:       set.label,
+    role:        set.role,
+    players:     set.players,
+    totalSets:   state.sets.length,
+  });
+}
+
+// ─── Sell / Unsold / Advance ──────────────────────────────────────────────────
 async function sellCurrentPlayer(roomId) {
   const state = auctionStates.get(roomId);
   if (!state || !state.currentPlayer) return;
 
   clearInterval(state.timerInterval);
 
-  const player   = state.currentPlayer;
-  const teamId   = state.highestBidderId;
-  const bid      = state.currentBid;
+  const player = state.currentPlayer;
+  const teamId = state.highestBidderId;
+  const bid    = state.currentBid;
 
-  // Deduct budget from winning team
+  // Deduct budget
   await db.query('UPDATE teams SET remaining_budget = remaining_budget - $1 WHERE team_id = $2', [bid, teamId]);
 
   // Record result
@@ -215,21 +235,35 @@ async function sellCurrentPlayer(roomId) {
     [roomId, player.player_id, teamId, bid]
   );
 
-  // Track in state
+  // Update squad tracking
+  if (!state.teamSquads[teamId]) {
+    state.teamSquads[teamId] = { players: [], indianCount: 0, foreignerCount: 0 };
+  }
+  state.teamSquads[teamId].players.push({ ...player, bid });
+  if (player.nationality === 'Indian') {
+    state.teamSquads[teamId].indianCount++;
+  } else {
+    state.teamSquads[teamId].foreignerCount++;
+  }
+
+  // Reset consecutive bid tracker
+  state.lastBidderId = null;
+
+  // Track in soldList
   state.soldList.push({ player, teamId, teamName: state.highestBidderName, bid });
 
   io.to(roomId).emit('player_sold', {
     player,
     teamId,
-    teamName:   state.highestBidderName,
+    teamName: state.highestBidderName,
     bid,
-    soldList:   state.soldList,
+    soldList: state.soldList,
   });
 
-  // Refresh team budgets
-  await emitRoomUpdate(roomId);
+  // Emit updated squad data to everyone
+  io.to(roomId).emit('squad_update', { teamSquads: state.teamSquads });
 
-  // Auto-advance after 3 seconds
+  await emitRoomUpdate(roomId);
   setTimeout(() => advanceToNextPlayer(roomId), 3000);
 }
 
@@ -238,6 +272,7 @@ async function markUnsold(roomId) {
   if (!state) return;
   clearInterval(state.timerInterval);
 
+  state.lastBidderId = null;
   const player = state.currentPlayer;
   state.soldList.push({ player, teamId: null, teamName: 'UNSOLD', bid: 0 });
 
@@ -249,63 +284,79 @@ async function advanceToNextPlayer(roomId) {
   const state = auctionStates.get(roomId);
   if (!state) return;
 
-  state.currentIndex++;
+  state.lastBidderId = null;
+  state.currentPlayerInSet++;
 
-  if (state.currentIndex >= state.players.length) {
-    // Auction over
+  const currentSet = state.sets[state.currentSetIndex];
+
+  if (state.currentPlayerInSet >= currentSet.players.length) {
+    // Current set exhausted — move to next set
+    state.currentSetIndex++;
+    state.currentPlayerInSet = 0;
+
+    if (state.currentSetIndex >= state.sets.length) {
+      // All sets done — auction over
+      clearInterval(state.timerInterval);
+      await db.query(`UPDATE rooms SET status = 'finished' WHERE room_id = $1`, [roomId]);
+      const teams = await getRoomTeams(roomId);
+      io.to(roomId).emit('auction_ended', { teams, soldList: state.soldList });
+      auctionStates.delete(roomId);
+      return;
+    }
+
+    // Show preview for next set
+    state.waitingForSetStart = true;
     clearInterval(state.timerInterval);
-    await db.query(`UPDATE rooms SET status = 'finished' WHERE room_id = $1`, [roomId]);
-    const teams = await getRoomTeams(roomId);
-    io.to(roomId).emit('auction_ended', { teams, soldList: state.soldList });
-    auctionStates.delete(roomId);
+    emitSetPreview(roomId, state);
     return;
   }
 
-  state.currentPlayer    = state.players[state.currentIndex];
-  state.currentBid       = Number(state.currentPlayer.base_price);
-  state.highestBidderId  = null;
+  // Next player within same set
+  state.globalPlayerIndex++;
+  state.currentPlayer     = currentSet.players[state.currentPlayerInSet];
+  state.currentBid        = Number(state.currentPlayer.base_price);
+  state.highestBidderId   = null;
   state.highestBidderName = null;
 
   io.to(roomId).emit('player_changed', {
     player:       state.currentPlayer,
     currentBid:   state.currentBid,
-    playerIndex:  state.currentIndex,
-    totalPlayers: state.players.length,
+    playerIndex:  state.globalPlayerIndex,
+    totalPlayers: state.totalPlayers,
+    setLabel:     currentSet.label,
+    playerInSet:  state.currentPlayerInSet,
+    setSize:      currentSet.players.length,
   });
 
   startTimer(roomId);
 }
 
-// ─── Socket.io ───────────────────────────────────────────────────────────────
+// ─── Socket.io ────────────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
   console.log(`🔌 Socket connected: ${socket.id}`);
 
-  // ── join_room ────────────────────────────────────────────────────────────
+  // ── join_room ──────────────────────────────────────────────────────────────
   socket.on('join_room', async ({ roomId, teamId }) => {
     roomId = roomId.toUpperCase();
     socket.join(roomId);
     socket.data.roomId = roomId;
     socket.data.teamId = Number(teamId);
 
-    // Update socket_id in DB
     await db.query('UPDATE teams SET socket_id = $1 WHERE team_id = $2', [socket.id, teamId]);
     await emitRoomUpdate(roomId);
 
-    // ── Restore hostMap from DB if lost (e.g. after server restart) ──────
+    // Restore hostMap from DB if lost after server restart
     if (!hostMap.has(roomId)) {
       const { rows: hostRows } = await db.query(
         'SELECT team_id FROM teams WHERE room_id = $1 AND is_host = true LIMIT 1',
         [roomId]
       );
-      if (hostRows.length > 0) {
-        hostMap.set(roomId, hostRows[0].team_id);
-      }
+      if (hostRows.length > 0) hostMap.set(roomId, hostRows[0].team_id);
     }
 
-    // If auction already running, send current state
     const state = auctionStates.get(roomId);
     if (state) {
-      // If host reconnects and auction was paused due to disconnect, auto-resume
+      // Auto-resume if host reconnects to a paused auction
       const hostTeamId = hostMap.get(roomId);
       if (Number(teamId) === hostTeamId && state.isPaused) {
         state.isPaused = false;
@@ -313,20 +364,44 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('host_reconnected', { message: 'Host reconnected. Auction resumed!' });
       }
 
-      socket.emit('auction_state_sync', {
-        player:       state.currentPlayer,
-        currentBid:   state.currentBid,
-        highestBidderName: state.highestBidderName,
-        timeLeft:     state.timeLeft,
-        playerIndex:  state.currentIndex,
-        totalPlayers: state.players.length,
-        soldList:     state.soldList,
-        isPaused:     state.isPaused,
-      });
+      if (state.waitingForSetStart) {
+        // Send set preview to reconnecting user
+        emitSetPreview(roomId, state);
+        // Also send squad data
+        socket.emit('squad_update', { teamSquads: state.teamSquads });
+        socket.emit('auction_state_sync', {
+          player:            null,
+          currentBid:        0,
+          highestBidderName: null,
+          timeLeft:          AUCTION_TIMER_SECS,
+          playerIndex:       state.globalPlayerIndex,
+          totalPlayers:      state.totalPlayers,
+          soldList:          state.soldList,
+          isPaused:          state.isPaused,
+          teamSquads:        state.teamSquads,
+          waitingForSetStart: true,
+        });
+      } else {
+        socket.emit('auction_state_sync', {
+          player:            state.currentPlayer,
+          currentBid:        state.currentBid,
+          highestBidderName: state.highestBidderName,
+          timeLeft:          state.timeLeft,
+          playerIndex:       state.globalPlayerIndex,
+          totalPlayers:      state.totalPlayers,
+          soldList:          state.soldList,
+          isPaused:          state.isPaused,
+          teamSquads:        state.teamSquads,
+          setLabel:          state.sets[state.currentSetIndex]?.label,
+          playerInSet:       state.currentPlayerInSet,
+          setSize:           state.sets[state.currentSetIndex]?.players.length,
+          waitingForSetStart: false,
+        });
+      }
     }
   });
 
-  // ── kick_player ──────────────────────────────────────────────────────────
+  // ── kick_player ────────────────────────────────────────────────────────────
   socket.on('kick_player', async ({ roomId, targetTeamId }) => {
     roomId = roomId.toUpperCase();
     const hostTeamId = hostMap.get(roomId);
@@ -336,7 +411,6 @@ io.on('connection', (socket) => {
     if (rows.length === 0) return;
     const target = rows[0];
 
-    // Disconnect their socket
     const targetSocket = [...io.sockets.sockets.values()].find(s => s.id === target.socket_id);
     if (targetSocket) targetSocket.emit('player_kicked', { message: 'You have been removed by the host.' });
 
@@ -344,7 +418,7 @@ io.on('connection', (socket) => {
     await emitRoomUpdate(roomId);
   });
 
-  // ── start_auction ────────────────────────────────────────────────────────
+  // ── start_auction ──────────────────────────────────────────────────────────
   socket.on('start_auction', async ({ roomId }) => {
     roomId = roomId.toUpperCase();
     const hostTeamId = hostMap.get(roomId);
@@ -356,25 +430,9 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Mark room active
     await db.query(`UPDATE rooms SET status = 'active' WHERE room_id = $1`, [roomId]);
 
-    // Role order for auction sequence
-    const ROLE_ORDER = ['Batsman', 'All-Rounder', 'Wicketkeeper', 'Pacer', 'Spinner'];
-
-    function orderPlayersByRole(players) {
-      const groups = {};
-      ROLE_ORDER.forEach(r => { groups[r] = []; });
-      const others = [];
-      for (const p of players) {
-        if (groups[p.role] !== undefined) groups[p.role].push(p);
-        else others.push(p);
-      }
-      // Shuffle within each group for variety, then concatenate in role order
-      return [...ROLE_ORDER.flatMap(r => shuffleArray(groups[r])), ...shuffleArray(others)];
-    }
-
-    // Build player list
+    // Fetch player list
     let rawList;
     if (db.players) {
       rawList = db.players;
@@ -382,41 +440,82 @@ io.on('connection', (socket) => {
       const { rows } = await db.query('SELECT * FROM ipl_players');
       rawList = rows;
     }
-
     if (rawList.length === 0) {
       rawList = seedPlayers.map((p, i) => ({ player_id: i + 1, ...p }));
     }
 
-    const playerList = orderPlayersByRole(rawList);
+    // Group into role sets, shuffle within each
+    const sets = ROLE_SETS
+      .map(({ label, role }) => ({
+        label,
+        role,
+        players: shuffleArray(rawList.filter(p => p.role === role)),
+      }))
+      .filter(s => s.players.length > 0);
+
+    const totalPlayers = sets.reduce((sum, s) => sum + s.players.length, 0);
 
     auctionStates.set(roomId, {
-      players:           playerList,
-      currentIndex:      0,
-      currentPlayer:     playerList[0],
-      currentBid:        Number(playerList[0].base_price),
+      sets,
+      currentSetIndex:   0,
+      currentPlayerInSet: 0,
+      waitingForSetStart: true,
+      currentPlayer:     null,
+      currentBid:        0,
       highestBidderId:   null,
       highestBidderName: null,
+      lastBidderId:      null,
       timerInterval:     null,
       timeLeft:          AUCTION_TIMER_SECS,
       isPaused:          false,
       soldList:          [],
+      teamSquads:        {},
+      globalPlayerIndex: 0,
+      totalPlayers,
     });
 
-    io.to(roomId).emit('auction_started', {
-      player:       playerList[0],
-      currentBid:   Number(playerList[0].base_price),
-      playerIndex:  0,
-      totalPlayers: playerList.length,
+    // Tell everyone auction is initialised, then show Set 1 preview
+    io.to(roomId).emit('auction_initialized', { totalPlayers, totalSets: sets.length });
+    emitSetPreview(roomId, auctionStates.get(roomId));
+  });
+
+  // ── start_set (host only) ──────────────────────────────────────────────────
+  socket.on('start_set', ({ roomId }) => {
+    roomId = roomId.toUpperCase();
+    const hostTeamId = hostMap.get(roomId);
+    if (socket.data.teamId !== hostTeamId) return;
+
+    const state = auctionStates.get(roomId);
+    if (!state || !state.waitingForSetStart) return;
+
+    state.waitingForSetStart = false;
+    const currentSet          = state.sets[state.currentSetIndex];
+    state.currentPlayer       = currentSet.players[0];
+    state.currentBid          = Number(state.currentPlayer.base_price);
+    state.highestBidderId     = null;
+    state.highestBidderName   = null;
+    state.lastBidderId        = null;
+
+    io.to(roomId).emit('set_started', {
+      setIndex:    state.currentSetIndex,
+      setNumber:   state.currentSetIndex + 1,
+      label:       currentSet.label,
+      player:      state.currentPlayer,
+      currentBid:  state.currentBid,
+      playerIndex: state.globalPlayerIndex,
+      totalPlayers: state.totalPlayers,
+      playerInSet: 0,
+      setSize:     currentSet.players.length,
     });
 
     startTimer(roomId);
   });
 
-  // ── place_bid ────────────────────────────────────────────────────────────
+  // ── place_bid ──────────────────────────────────────────────────────────────
   socket.on('place_bid', async ({ roomId, teamId, bidAmount }) => {
     roomId = roomId.toUpperCase();
     const state = auctionStates.get(roomId);
-    if (!state || state.isPaused) return;
+    if (!state || state.isPaused || state.waitingForSetStart) return;
 
     const amount = Number(bidAmount);
     if (isNaN(amount) || amount <= state.currentBid) {
@@ -424,11 +523,35 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Check budget
+    // ── Consecutive bid prevention ──
+    if (Number(teamId) === state.lastBidderId) {
+      socket.emit('bid_rejected', { message: '⛔ Wait for another team to bid before bidding again!' });
+      return;
+    }
+
+    // ── Squad size limit ──
+    const squad = state.teamSquads[Number(teamId)] || { players: [], indianCount: 0, foreignerCount: 0 };
+    if (squad.players.length >= MAX_SQUAD_SIZE) {
+      socket.emit('bid_rejected', { message: `Squad full! Max ${MAX_SQUAD_SIZE} players per team.` });
+      return;
+    }
+
+    // ── Nationality limits ──
+    const player   = state.currentPlayer;
+    const isIndian = player.nationality === 'Indian';
+    if (isIndian && squad.indianCount >= MAX_INDIANS) {
+      socket.emit('bid_rejected', { message: `Indian player cap reached (max ${MAX_INDIANS} Indians per squad)!` });
+      return;
+    }
+    if (!isIndian && squad.foreignerCount >= MAX_FOREIGNERS) {
+      socket.emit('bid_rejected', { message: `Overseas player cap reached (max ${MAX_FOREIGNERS} foreigners per squad)!` });
+      return;
+    }
+
+    // ── Budget check ──
     const { rows } = await db.query('SELECT * FROM teams WHERE team_id = $1', [teamId]);
     if (rows.length === 0) return;
     const team = rows[0];
-
     if (amount > Number(team.remaining_budget)) {
       socket.emit('bid_rejected', { message: 'Insufficient budget!' });
       return;
@@ -438,18 +561,18 @@ io.on('connection', (socket) => {
     state.currentBid        = amount;
     state.highestBidderId   = Number(teamId);
     state.highestBidderName = team.team_name;
+    state.lastBidderId      = Number(teamId);
 
     io.to(roomId).emit('bid_updated', {
-      currentBid:         amount,
-      highestBidderName:  team.team_name,
-      highestBidderId:    Number(teamId),
+      currentBid:        amount,
+      highestBidderName: team.team_name,
+      highestBidderId:   Number(teamId),
     });
 
-    // Reset timer on new bid
     resetTimer(roomId);
   });
 
-  // ── next_player (host) ───────────────────────────────────────────────────
+  // ── next_player (host) ─────────────────────────────────────────────────────
   socket.on('next_player', async ({ roomId }) => {
     roomId = roomId.toUpperCase();
     const hostTeamId = hostMap.get(roomId);
@@ -457,6 +580,7 @@ io.on('connection', (socket) => {
     const state = auctionStates.get(roomId);
     if (!state) return;
     clearInterval(state.timerInterval);
+    state.lastBidderId = null;
     if (state.highestBidderId) {
       await sellCurrentPlayer(roomId);
     } else {
@@ -464,7 +588,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ── mark_unsold (host) ───────────────────────────────────────────────────
+  // ── mark_unsold (host) ─────────────────────────────────────────────────────
   socket.on('mark_unsold', async ({ roomId }) => {
     roomId = roomId.toUpperCase();
     const hostTeamId = hostMap.get(roomId);
@@ -472,7 +596,7 @@ io.on('connection', (socket) => {
     await markUnsold(roomId);
   });
 
-  // ── toggle_pause (host) ──────────────────────────────────────────────────
+  // ── toggle_pause (host) ────────────────────────────────────────────────────
   socket.on('toggle_pause', ({ roomId }) => {
     roomId = roomId.toUpperCase();
     const hostTeamId = hostMap.get(roomId);
@@ -483,16 +607,16 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('auction_paused', { isPaused: state.isPaused });
   });
 
-  // ── reset_timer (host) ───────────────────────────────────────────────────
+  // ── reset_timer (host) ─────────────────────────────────────────────────────
   socket.on('reset_timer', ({ roomId }) => {
     roomId = roomId.toUpperCase();
     const hostTeamId = hostMap.get(roomId);
     if (socket.data.teamId !== hostTeamId) return;
     resetTimer(roomId);
-    io.to(roomId).emit('timer_reset', { timeLeft: 30 });
+    io.to(roomId).emit('timer_reset', { timeLeft: AUCTION_TIMER_SECS });
   });
 
-  // ── send_message (chat) ──────────────────────────────────────────────────
+  // ── send_message (chat) ────────────────────────────────────────────────────
   socket.on('send_message', ({ roomId, teamName, message }) => {
     if (!message || message.trim().length === 0) return;
     const timestamp = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
@@ -503,19 +627,17 @@ io.on('connection', (socket) => {
     });
   });
 
-  // ── disconnect ───────────────────────────────────────────────────────────
+  // ── disconnect ─────────────────────────────────────────────────────────────
   socket.on('disconnect', async () => {
     const { roomId, teamId } = socket.data;
     if (!roomId || !teamId) return;
 
-    // Null out socket_id
     await db.query('UPDATE teams SET socket_id = NULL WHERE team_id = $1', [teamId]);
 
-    // If host disconnected, pause auction
     const hostTeamId = hostMap.get(roomId);
     if (teamId === hostTeamId) {
       const state = auctionStates.get(roomId);
-      if (state) {
+      if (state && !state.waitingForSetStart) {
         state.isPaused = true;
         io.to(roomId).emit('host_disconnected', { message: 'Host disconnected. Auction paused.' });
       }

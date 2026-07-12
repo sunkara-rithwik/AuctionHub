@@ -1,6 +1,6 @@
 /**
- * auction.js — Live Auction Room Socket Logic
- * Handles bidding, player cards, timer, chat, and sold history
+ * auction.js — Auction Hub Live Auction Room
+ * Handles bidding, player cards, timers, squads, set previews, chat
  */
 
 // ─── Session ──────────────────────────────────────────────────────────────────
@@ -15,15 +15,20 @@ if (!roomId || !teamId) { window.location.href = '/'; }
 // ─── State ────────────────────────────────────────────────────────────────────
 let currentBid       = 0;
 let currentPlayer    = null;
-let timeLeft         = 30;
+let timeLeft         = 15;
 let totalPlayers     = 0;
-let currentIndex     = 0;
+let globalPlayerIdx  = 0;
 let isPaused         = false;
 let allTeams         = [];
 let soldList         = [];
+let teamSquads       = {};          // teamId → {players[], indianCount, foreignerCount}
+let currentSetLabel  = '';
 const TIMER_MAX      = 15;
+const MAX_SQUAD      = 25;
+const MAX_INDIANS    = 17;
+const MAX_FOREIGNERS = 8;
 
-// ─── Utilities ───────────────────────────────────────────────────────────────
+// ─── Utilities ────────────────────────────────────────────────────────────────
 function toast(msg, type = 'info') {
   const container = document.getElementById('toast-container');
   const icons = { success: '✅', error: '❌', info: 'ℹ️', warning: '⚠️' };
@@ -35,7 +40,8 @@ function toast(msg, type = 'info') {
 }
 
 function escapeHtml(str) {
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function avatarInitials(name) {
@@ -63,7 +69,6 @@ function avatarGrad(name) {
 function roleClass(role) {
   const map = {
     'Batsman':      'badge-blue',
-    'Bowler':       'badge-green',
     'All-Rounder':  'badge-gold',
     'Wicketkeeper': 'badge-purple',
     'Pacer':        'badge-green',
@@ -72,38 +77,123 @@ function roleClass(role) {
   return map[role] || 'badge-blue';
 }
 
+function roleEmoji(role) {
+  const map = {
+    'Batsman':      '🏏',
+    'All-Rounder':  '⚡',
+    'Wicketkeeper': '🧤',
+    'Pacer':        '💨',
+    'Spinner':      '🌀',
+  };
+  return map[role] || '🏏';
+}
+
+// ─── Tab Switching ────────────────────────────────────────────────────────────
+window.switchTab = function (tab) {
+  ['teams', 'squads', 'history'].forEach(t => {
+    const pane = document.getElementById(`pane-${t}`);
+    const btn  = document.getElementById(`tab-${t}`);
+    if (pane) pane.className = `panel-pane${t === tab ? '' : ' hidden'}`;
+    if (btn)  btn.classList.toggle('active', t === tab);
+  });
+  if (tab === 'squads') renderSquads();
+};
+
 // ─── Navbar ───────────────────────────────────────────────────────────────────
-document.getElementById('nav-room-info').textContent  = `Room: ${roomId}`;
-document.getElementById('nav-team-info').textContent  = teamName;
+document.getElementById('nav-room-info').textContent = `Room: ${roomId}`;
+document.getElementById('nav-team-info').textContent = teamName;
 if (isHost) document.getElementById('host-bar').style.display = 'flex';
 
-// ─── Update My Budget Display ─────────────────────────────────────────────────
+// ─── My Budget + Squad Display ────────────────────────────────────────────────
 function updateMyBudgetDisplay() {
   document.getElementById('my-budget-display').textContent = `₹${myBudget.toFixed(2)} Cr`;
+
+  const mySquad = teamSquads[teamId] || { players: [], indianCount: 0, foreignerCount: 0 };
+  document.getElementById('my-squad-count').textContent =
+    `${mySquad.players.length}/${MAX_SQUAD}`;
+
+  const limitsEl = document.getElementById('my-squad-limits');
+  if (limitsEl) {
+    const indClass = mySquad.indianCount >= MAX_INDIANS ? 'style="color:#f87171"' : '';
+    const forClass = mySquad.foreignerCount >= MAX_FOREIGNERS ? 'style="color:#f87171"' : '';
+    limitsEl.innerHTML =
+      `🇮🇳 <span ${indClass}>${mySquad.indianCount}/${MAX_INDIANS}</span>&nbsp;` +
+      `🌍 <span ${forClass}>${mySquad.foreignerCount}/${MAX_FOREIGNERS}</span>`;
+  }
+
   updateQuickBids();
+}
+
+// ─── Set Preview ──────────────────────────────────────────────────────────────
+function showSetPreview({ setIndex, setNumber, label, role, players, totalSets }) {
+  const overlay  = document.getElementById('set-preview-overlay');
+  const setTitle = label.includes('—') ? label.split('—')[1].trim() : label;
+  const emoji    = roleEmoji(role);
+
+  document.getElementById('set-preview-pill').textContent  = `Set ${setNumber} of ${totalSets}`;
+  document.getElementById('set-preview-title').textContent = `${emoji} ${setTitle}`;
+  document.getElementById('set-preview-sub').textContent   = `${players.length} players up for auction`;
+
+  const grid = document.getElementById('set-preview-grid');
+  grid.innerHTML = players.map(p => `
+    <div class="preview-player-card">
+      <div class="preview-player-name">${escapeHtml(p.name)}</div>
+      <div class="preview-player-meta">
+        <span class="badge ${roleClass(p.role)}" style="font-size:0.65rem;padding:0.1rem 0.4rem">${escapeHtml(p.role)}</span>
+        <span class="preview-player-price">₹${Number(p.base_price).toFixed(2)}Cr</span>
+      </div>
+      <div class="preview-player-team">${escapeHtml(p.ipl_team || '')} · ${escapeHtml(p.nationality || '')}</div>
+    </div>
+  `).join('');
+
+  const footer = document.getElementById('set-preview-footer');
+  if (isHost) {
+    footer.innerHTML = `
+      <button id="start-set-btn"
+        style="padding:0.85rem 2.5rem;background:var(--gold);color:#000;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:1.1rem;border:none;border-radius:9999px;cursor:pointer;letter-spacing:0.05em;box-shadow:0 0 24px rgba(240,180,41,0.4);transition:all 0.2s"
+        onmouseover="this.style.transform='scale(1.04)'" onmouseout="this.style.transform='scale(1)'"
+        onclick="hostAction('start_set')">
+        🏏 Start ${setTitle} Auction
+      </button>`;
+  } else {
+    footer.innerHTML = `<div style="color:var(--text-muted);font-size:0.9rem;margin-top:0.5rem">
+      ⏳ Waiting for the host to start this set...
+    </div>`;
+  }
+
+  overlay.classList.add('active');
+}
+
+function hideSetPreview() {
+  document.getElementById('set-preview-overlay').classList.remove('active');
+}
+
+// ─── Show Auction Content ──────────────────────────────────────────────────────
+function showAuctionContent() {
+  document.getElementById('waiting-screen').style.display  = 'none';
+  document.getElementById('auction-content').style.display = 'flex';
 }
 
 // ─── Render Player Card ───────────────────────────────────────────────────────
 function renderPlayerCard(player) {
+  if (!player) return;
   currentPlayer = player;
   const initials = avatarInitials(player.name);
   const grad     = avatarGrad(player.name);
 
-  document.getElementById('player-avatar').textContent   = initials;
-  document.getElementById('player-avatar').style.background = grad;
-  document.getElementById('player-name').textContent     = player.name;
-  document.getElementById('player-base-price').textContent = `₹${Number(player.base_price).toFixed(2)} Cr`;
+  document.getElementById('player-avatar').textContent        = initials;
+  document.getElementById('player-avatar').style.background   = grad;
+  document.getElementById('player-name').textContent          = player.name;
+  document.getElementById('player-base-price').textContent    = `₹${Number(player.base_price).toFixed(2)} Cr`;
 
   const roleBadge = document.getElementById('player-role-badge');
-  roleBadge.textContent  = player.role || '—';
-  roleBadge.className    = `badge ${roleClass(player.role)}`;
+  roleBadge.textContent = player.role || '—';
+  roleBadge.className   = `badge ${roleClass(player.role)}`;
 
   document.getElementById('player-team-badge').textContent   = player.ipl_team || player.team || '—';
   document.getElementById('player-nation-badge').textContent = player.nationality || '—';
 
-  // Pre-fill bid input with a sensible increment
-  const increment    = currentBid >= 1 ? 0.25 : 0.25;
-  const suggestedBid = Math.max(Number(player.base_price), currentBid + increment);
+  const suggestedBid = Math.max(Number(player.base_price), currentBid + 0.25);
   document.getElementById('bid-input').value = suggestedBid.toFixed(2);
 
   updateQuickBids();
@@ -126,17 +216,15 @@ function renderBidUpdate(bid, bidderName, bidderId) {
     label.textContent = 'No bids yet — be the first!';
   }
 
-  // Update bid input
-  const next = (bid + 0.25).toFixed(2);
-  document.getElementById('bid-input').value = next;
+  document.getElementById('bid-input').value = (bid + 0.25).toFixed(2);
   updateQuickBids();
 }
 
 // ─── Quick Bid Buttons ────────────────────────────────────────────────────────
 function updateQuickBids() {
   const container = document.getElementById('quick-bids');
-  const base      = Math.max(currentBid, currentPlayer ? Number(currentPlayer.base_price) : 0);
-  const steps     = [0.25, 0.5, 1.0, 2.0];
+  const base = Math.max(currentBid, currentPlayer ? Number(currentPlayer.base_price) : 0);
+  const steps = [0.25, 0.5, 1.0, 2.0];
   container.innerHTML = steps.map(step => {
     const val = (base + step).toFixed(2);
     const affordable = parseFloat(val) <= myBudget;
@@ -146,40 +234,42 @@ function updateQuickBids() {
   }).join('');
 }
 
-window.setQuickBid = function(val) {
+window.setQuickBid = function (val) {
   document.getElementById('bid-input').value = val;
 };
 
 // ─── Progress Bar ─────────────────────────────────────────────────────────────
-function updateProgress(index, total) {
-  currentIndex  = index;
-  totalPlayers  = total;
+function updateProgress(index, total, playerInSet, setSize, setLabel) {
+  globalPlayerIdx = index;
+  totalPlayers    = total;
   const pct = total > 0 ? ((index + 1) / total * 100).toFixed(1) : 0;
-  document.getElementById('player-progress-bar').style.width = pct + '%';
-  document.getElementById('player-progress-label').textContent = `Player ${index + 1} / ${total}`;
-  document.getElementById('player-num-display').textContent = `#${index + 1} of ${total}`;
+  document.getElementById('player-progress-bar').style.width    = pct + '%';
+  document.getElementById('player-progress-label').textContent  = `Player ${index + 1} / ${total}`;
+  document.getElementById('player-num-display').textContent     = `#${index + 1} of ${total}`;
+
+  if (setLabel) currentSetLabel = setLabel;
+  document.getElementById('set-label-display').textContent = currentSetLabel || '';
+
+  if (playerInSet !== undefined && setSize !== undefined) {
+    document.getElementById('set-progress-label').textContent =
+      `${playerInSet + 1} / ${setSize} in this set`;
+  }
 }
 
 // ─── Timer ────────────────────────────────────────────────────────────────────
 function updateTimer(seconds) {
   timeLeft = seconds;
-  const el    = document.getElementById('timer-display');
-  const bar   = document.getElementById('timer-bar');
-  const pct   = (seconds / TIMER_MAX * 100).toFixed(1);
+  const el  = document.getElementById('timer-display');
+  const bar = document.getElementById('timer-bar');
+  const pct = (seconds / TIMER_MAX * 100).toFixed(1);
 
   el.textContent  = seconds;
   bar.style.width = pct + '%';
+  el.className    = 'timer-count';
+  bar.className   = 'timer-bar-fill';
 
-  el.className  = 'timer-count';
-  bar.className = 'timer-bar-fill';
-
-  if (seconds <= 5) {
-    el.classList.add('critical');
-    bar.classList.add('critical');
-  } else if (seconds <= 10) {
-    el.classList.add('warning');
-    bar.classList.add('warning');
-  }
+  if (seconds <= 5)       { el.classList.add('critical'); bar.classList.add('critical'); }
+  else if (seconds <= 10) { el.classList.add('warning');  bar.classList.add('warning');  }
 }
 
 // ─── Teams Panel ─────────────────────────────────────────────────────────────
@@ -187,7 +277,6 @@ function renderTeams(teams) {
   allTeams = teams;
   const container = document.getElementById('teams-list');
 
-  // Update my budget from teams list
   const myTeam = teams.find(t => t.team_id === teamId);
   if (myTeam) {
     myBudget = Number(myTeam.remaining_budget);
@@ -200,36 +289,106 @@ function renderTeams(teams) {
     return;
   }
 
-  // Find current winning team for highlight
-  const winningTeamId = (() => {
-    const state = { highestBidderId: null };
-    return state.highestBidderId;
-  })();
-
   container.innerHTML = [...teams]
     .sort((a, b) => Number(b.remaining_budget) - Number(a.remaining_budget))
     .map(t => {
       const isMe      = t.team_id === teamId;
-      const maxBudget = teams.reduce((max, x) => Math.max(max, Number(x.remaining_budget)), 0);
-      const budgetPct = maxBudget > 0 ? (Number(t.remaining_budget) / maxBudget * 100).toFixed(1) : 0;
+      const maxBudget = teams.reduce((mx, x) => Math.max(mx, Number(x.remaining_budget)), 1);
+      const budgetPct = (Number(t.remaining_budget) / maxBudget * 100).toFixed(1);
+      const mySquad   = teamSquads[t.team_id] || { players: [], indianCount: 0, foreignerCount: 0 };
 
       return `
         <div class="team-row-auction ${isMe ? 'my-team' : ''}">
           <div class="team-row-top">
-            <span class="team-name-display" style="font-size:0.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">
-              ${t.is_host ? '👑 ' : ''}${escapeHtml(t.team_name)}${isMe ? ' <span style="color:var(--blue-bright);font-size:0.75rem">(You)</span>' : ''}
+            <span style="font-size:0.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">
+              ${t.is_host ? '👑 ' : ''}${escapeHtml(t.team_name)}${isMe ? ' <span style="color:var(--blue-bright);font-size:0.72rem">(You)</span>' : ''}
             </span>
-            <span style="font-family:\'Rajdhani\',sans-serif;font-size:0.9rem;color:var(--gold);white-space:nowrap">
+            <span style="font-family:'Rajdhani',sans-serif;font-size:0.9rem;color:var(--gold);white-space:nowrap">
               ₹${Number(t.remaining_budget).toFixed(2)}Cr
             </span>
           </div>
           <div class="team-budget-bar-wrap">
             <div class="team-budget-bar" style="width:${budgetPct}%"></div>
           </div>
+          <div style="font-size:0.68rem;color:var(--text-muted);margin-top:0.2rem">
+            Squad: ${mySquad.players.length}/${MAX_SQUAD} &nbsp;·&nbsp;
+            🇮🇳 ${mySquad.indianCount}/${MAX_INDIANS} &nbsp;·&nbsp;
+            🌍 ${mySquad.foreignerCount}/${MAX_FOREIGNERS}
+          </div>
         </div>
       `;
     }).join('');
 }
+
+// ─── Squads Panel ─────────────────────────────────────────────────────────────
+function renderSquads() {
+  const container = document.getElementById('squads-list');
+  const empty     = document.getElementById('squads-empty');
+
+  const hasAnyPlayer = Object.values(teamSquads).some(s => s.players.length > 0);
+  if (!hasAnyPlayer) {
+    empty.style.display   = 'block';
+    container.innerHTML   = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  container.innerHTML = allTeams.map(team => {
+    const squad  = teamSquads[team.team_id] || { players: [], indianCount: 0, foreignerCount: 0 };
+    const isMe   = team.team_id === teamId;
+    const isFull = squad.players.length >= MAX_SQUAD;
+
+    const indPill  = squad.indianCount  >= MAX_INDIANS    ? 'full'    : squad.indianCount  >= MAX_INDIANS - 3  ? 'warning' : 'ok';
+    const forPill  = squad.foreignerCount >= MAX_FOREIGNERS ? 'full'  : squad.foreignerCount >= MAX_FOREIGNERS - 2 ? 'warning' : 'ok';
+    const sizePill = isFull ? 'full' : squad.players.length >= MAX_SQUAD - 3 ? 'warning' : 'ok';
+
+    // Group players by role for display
+    const byRole = {};
+    squad.players.forEach(p => {
+      if (!byRole[p.role]) byRole[p.role] = [];
+      byRole[p.role].push(p);
+    });
+    const roleOrder = ['Batsman', 'All-Rounder', 'Wicketkeeper', 'Pacer', 'Spinner'];
+    const playersHtml = squad.players.length === 0
+      ? '<div style="font-size:0.78rem;color:var(--text-muted);padding:0.4rem 0">No players yet</div>'
+      : roleOrder.flatMap(role => {
+          const players = byRole[role] || [];
+          if (!players.length) return [];
+          return [
+            `<div style="font-size:0.68rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin:0.3rem 0 0.1rem">${roleEmoji(role)} ${role}</div>`,
+            ...players.map(p => `
+              <div class="squad-player-row">
+                <span class="squad-player-name">${escapeHtml(p.name)}</span>
+                <span style="font-size:0.7rem;color:${p.nationality === 'Indian' ? '#60a5fa' : '#a78bfa'}">${p.nationality === 'Indian' ? '🇮🇳' : '🌍'}</span>
+                <span class="squad-player-price">₹${Number(p.bid || p.base_price).toFixed(2)}Cr</span>
+              </div>`)
+          ];
+        }).join('');
+
+    return `
+      <div class="squad-team-block" style="margin-bottom:0.5rem">
+        <div class="squad-team-header" onclick="toggleSquad(${team.team_id})">
+          <span class="squad-team-name ${isMe ? 'my-squad' : ''}">
+            ${team.is_host ? '👑 ' : ''}${escapeHtml(team.team_name)}${isMe ? ' (You)' : ''}
+          </span>
+          <span class="squad-team-count">${squad.players.length}/${MAX_SQUAD} ▾</span>
+        </div>
+        <div id="squad-body-${team.team_id}" style="display:none">
+          <div class="squad-limits">
+            <span class="limit-pill ${sizePill}">Squad: ${squad.players.length}/${MAX_SQUAD}</span>
+            <span class="limit-pill ${indPill}">🇮🇳 Indians: ${squad.indianCount}/${MAX_INDIANS}</span>
+            <span class="limit-pill ${forPill}">🌍 Overseas: ${squad.foreignerCount}/${MAX_FOREIGNERS}</span>
+          </div>
+          <div class="squad-player-list">${playersHtml}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+window.toggleSquad = function (tid) {
+  const body = document.getElementById(`squad-body-${tid}`);
+  if (body) body.style.display = body.style.display === 'none' ? 'block' : 'none';
+};
 
 // ─── Sold History ─────────────────────────────────────────────────────────────
 function addToSoldHistory(item) {
@@ -242,11 +401,7 @@ function renderSoldHistory() {
   const empty     = document.getElementById('sold-empty');
   document.getElementById('sold-count').textContent = soldList.length;
 
-  if (soldList.length === 0) {
-    if (empty) empty.style.display = 'block';
-    return;
-  }
-
+  if (soldList.length === 0) { if (empty) empty.style.display = 'block'; return; }
   if (empty) empty.style.display = 'none';
 
   container.innerHTML = [...soldList].reverse().map(item => {
@@ -258,8 +413,7 @@ function renderSoldHistory() {
           ? '<span class="badge badge-red" style="font-size:0.65rem">UNSOLD</span>'
           : `<span class="sold-bid">₹${Number(item.bid).toFixed(2)}Cr</span>`}
         <span class="sold-team">${escapeHtml(item.teamName)}</span>
-      </div>
-    `;
+      </div>`;
   }).join('');
 }
 
@@ -280,8 +434,7 @@ function addChatMsg(data, isSystem = false) {
         </span>
         <span class="chat-msg-time">${data.timestamp}</span>
       </div>
-      <div class="chat-msg-text">${escapeHtml(data.message)}</div>
-    `;
+      <div class="chat-msg-text">${escapeHtml(data.message)}</div>`;
   }
 
   container.appendChild(el);
@@ -303,8 +456,7 @@ function showResultBanner(type, title, subtitle) {
   el.className = `result-banner ${type}`;
   el.innerHTML = `
     <div class="result-banner-title">${title}</div>
-    <div style="font-size:1.1rem;margin-top:0.5rem;color:var(--text-secondary)">${subtitle}</div>
-  `;
+    <div style="font-size:1.1rem;margin-top:0.5rem;color:var(--text-secondary)">${subtitle}</div>`;
   container.innerHTML = '';
   container.appendChild(el);
   setTimeout(() => {
@@ -314,7 +466,7 @@ function showResultBanner(type, title, subtitle) {
   }, 2800);
 }
 
-// ─── Show / Hide Pause Overlay ───────────────────────────────────────────────
+// ─── Pause Overlay ────────────────────────────────────────────────────────────
 function setPauseOverlay(active) {
   const overlay   = document.getElementById('pause-overlay');
   const resumeBtn = document.getElementById('host-resume-btn');
@@ -329,27 +481,32 @@ function setPauseOverlay(active) {
   }
 }
 
-// ─── Show Auction Content ─────────────────────────────────────────────────────
-function showAuctionContent() {
-  document.getElementById('waiting-screen').style.display  = 'none';
-  document.getElementById('auction-content').style.display = 'flex';
+// ─── Client-Side Bid Guards ───────────────────────────────────────────────────
+function clientBidGuard(amount) {
+  if (isNaN(amount) || amount <= 0) { toast('Enter a valid bid amount', 'warning'); return false; }
+  if (amount <= currentBid)         { toast(`Bid must be more than ₹${currentBid.toFixed(2)} Cr`, 'warning'); return false; }
+  if (amount > myBudget)            { toast(`Insufficient budget! You have ₹${myBudget.toFixed(2)} Cr`, 'error'); return false; }
+
+  const mySquad = teamSquads[teamId] || { players: [], indianCount: 0, foreignerCount: 0 };
+  if (mySquad.players.length >= MAX_SQUAD) {
+    toast(`Squad full! Max ${MAX_SQUAD} players per team.`, 'error'); return false;
+  }
+  if (currentPlayer) {
+    const isIndian = currentPlayer.nationality === 'Indian';
+    if (isIndian  && mySquad.indianCount >= MAX_INDIANS) {
+      toast(`Indian player cap reached (max ${MAX_INDIANS})!`, 'error'); return false;
+    }
+    if (!isIndian && mySquad.foreignerCount >= MAX_FOREIGNERS) {
+      toast(`Overseas player cap reached (max ${MAX_FOREIGNERS})!`, 'error'); return false;
+    }
+  }
+  return true;
 }
 
 // ─── Place Bid ────────────────────────────────────────────────────────────────
 window.placeBid = function () {
-  const input = document.getElementById('bid-input');
-  const amount = parseFloat(input.value);
-
-  if (isNaN(amount) || amount <= 0) { toast('Enter a valid bid amount', 'warning'); return; }
-  if (amount <= currentBid) {
-    toast(`Bid must be more than ₹${currentBid.toFixed(2)} Cr`, 'warning');
-    return;
-  }
-  if (amount > myBudget) {
-    toast(`Insufficient budget! You have ₹${myBudget.toFixed(2)} Cr`, 'error');
-    return;
-  }
-
+  const amount = parseFloat(document.getElementById('bid-input').value);
+  if (!clientBidGuard(amount)) return;
   socket.emit('place_bid', { roomId, teamId, bidAmount: amount });
 };
 
@@ -364,43 +521,74 @@ window.hostAction = function (action) {
   }
 };
 
-// ─── Socket.io ───────────────────────────────────────────────────────────────
+// ─── Socket.io ────────────────────────────────────────────────────────────────
 const socket = io();
-
 socket.emit('join_room', { roomId, teamId });
 
-// Room update (teams)
+// Room update (teams + budgets)
 socket.on('room_update', ({ teams }) => {
   renderTeams(teams);
 });
 
-// Auction started
-socket.on('auction_started', ({ player, currentBid: bid, playerIndex, totalPlayers: total }) => {
+// Auction initialised — set up the layout so it shows behind the set preview
+socket.on('auction_initialized', ({ totalPlayers: total }) => {
+  totalPlayers = total;
   showAuctionContent();
-  currentBid = bid;
-  updateProgress(playerIndex, total);
-  renderPlayerCard(player);
-  renderBidUpdate(bid, null, null);
-  updateTimer(30);
-  addChatMsg({ message: '🎺 Auction has started! Good luck everyone!' }, true);
+  addChatMsg({ message: '🎺 Auction initialised! Waiting for Set 1 to begin...' }, true);
 });
 
-// State sync (reconnecting player)
+// Set preview
+socket.on('set_preview', (data) => {
+  showAuctionContent(); // ensure layout is visible behind overlay
+  showSetPreview(data);
+  addChatMsg({ message: `📋 ${data.label} preview — ${data.players.length} players` }, true);
+});
+
+// Set started by host
+socket.on('set_started', ({ label, player, currentBid: bid, playerIndex, totalPlayers: total, playerInSet, setSize }) => {
+  hideSetPreview();
+  currentSetLabel = label;
+  currentBid      = bid;
+  updateProgress(playerIndex, total, playerInSet, setSize, label);
+  renderPlayerCard(player);
+  renderBidUpdate(bid, null, null);
+  updateTimer(TIMER_MAX);
+  addChatMsg({ message: `🏏 [${label}] Auction started! First up: ${player.name}` }, true);
+});
+
+// State sync for reconnecting users
 socket.on('auction_state_sync', (state) => {
-  showAuctionContent();
+  if (state.teamSquads) {
+    teamSquads = state.teamSquads;
+    renderSquads();
+    updateMyBudgetDisplay();
+  }
+  soldList = state.soldList || [];
+  renderSoldHistory();
+
+  if (state.waitingForSetStart) {
+    showAuctionContent();
+    return; // set_preview will come separately
+  }
+
   if (state.player) {
-    currentBid = state.currentBid;
-    updateProgress(state.playerIndex, state.totalPlayers);
+    showAuctionContent();
+    currentBid      = state.currentBid;
+    currentSetLabel = state.setLabel || '';
+    updateProgress(state.playerIndex, state.totalPlayers, state.playerInSet, state.setSize, state.setLabel);
     renderPlayerCard(state.player);
     renderBidUpdate(state.currentBid, state.highestBidderName, null);
     updateTimer(state.timeLeft);
-    soldList = state.soldList || [];
-    renderSoldHistory();
-    if (state.isPaused) {
-      isPaused = true;
-      setPauseOverlay(true);
-    }
+    if (state.isPaused) { isPaused = true; setPauseOverlay(true); }
   }
+});
+
+// Squad update (after each sale)
+socket.on('squad_update', ({ teamSquads: squads }) => {
+  teamSquads = squads;
+  renderTeams(allTeams);           // refresh team rows to show new counts
+  renderSquads();                  // refresh squads tab if open
+  updateMyBudgetDisplay();
 });
 
 // Bid updated
@@ -418,22 +606,17 @@ socket.on('bid_rejected', ({ message }) => {
   toast(message, 'error');
 });
 
-// Timer tick
-socket.on('timer_tick', ({ timeLeft: t }) => {
-  updateTimer(t);
-});
+// Timer
+socket.on('timer_tick',  ({ timeLeft: t }) => updateTimer(t));
+socket.on('timer_reset', ({ timeLeft: t }) => updateTimer(t));
 
-socket.on('timer_reset', ({ timeLeft: t }) => {
-  updateTimer(t);
-});
-
-// Player changed
-socket.on('player_changed', ({ player, currentBid: bid, playerIndex, totalPlayers: total }) => {
+// Player changed (within same set)
+socket.on('player_changed', ({ player, currentBid: bid, playerIndex, totalPlayers: total, setLabel, playerInSet, setSize }) => {
   currentBid = bid;
-  updateProgress(playerIndex, total);
+  updateProgress(playerIndex, total, playerInSet, setSize, setLabel);
   renderPlayerCard(player);
   renderBidUpdate(bid, null, null);
-  updateTimer(30);
+  updateTimer(TIMER_MAX);
   addChatMsg({ message: `🏏 Up next: ${player.name} (${player.role}) — Base: ₹${Number(player.base_price).toFixed(2)} Cr` }, true);
 });
 
@@ -453,7 +636,7 @@ socket.on('player_unsold', ({ player, soldList: list }) => {
   addChatMsg({ message: `❌ ${player.name} goes UNSOLD.` }, true);
 });
 
-// Auction paused/resumed
+// Auction paused / resumed
 socket.on('auction_paused', ({ isPaused: paused }) => {
   isPaused = paused;
   setPauseOverlay(paused);
@@ -462,14 +645,13 @@ socket.on('auction_paused', ({ isPaused: paused }) => {
   addChatMsg({ message: paused ? '⏸ Auction paused by host' : '▶ Auction resumed!' }, true);
 });
 
-// Host disconnected
+// Host disconnected / reconnected
 socket.on('host_disconnected', ({ message }) => {
   toast(message, 'warning');
   setPauseOverlay(true);
   isPaused = true;
 });
 
-// Host reconnected
 socket.on('host_reconnected', ({ message }) => {
   toast(message, 'success');
 });
@@ -485,19 +667,22 @@ socket.on('auction_ended', ({ teams, soldList: list }) => {
   document.getElementById('ended-overlay').style.display = 'block';
   document.body.style.overflow = 'hidden';
 
-  // Final teams
   const teamsContainer = document.getElementById('final-teams');
   const sorted = [...teams].sort((a, b) => Number(b.remaining_budget) - Number(a.remaining_budget));
-  teamsContainer.innerHTML = sorted.map((t, i) => `
-    <div class="result-card">
-      <div style="font-size:1.5rem;margin-bottom:0.4rem">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '🏅'}</div>
-      <div style="font-family:\'Rajdhani\',sans-serif;font-size:1.1rem;font-weight:700">${escapeHtml(t.team_name)}</div>
-      <div style="color:var(--gold);font-family:\'Rajdhani\',sans-serif;margin-top:0.2rem">₹${Number(t.remaining_budget).toFixed(2)} Cr left</div>
-      ${t.is_host ? '<span class="badge badge-gold" style="margin-top:0.4rem">HOST</span>' : ''}
-    </div>
-  `).join('');
+  teamsContainer.innerHTML = sorted.map((t, i) => {
+    const squad = teamSquads[t.team_id] || { players: [], indianCount: 0, foreignerCount: 0 };
+    return `
+      <div class="result-card">
+        <div style="font-size:1.5rem;margin-bottom:0.4rem">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '🏅'}</div>
+        <div style="font-family:'Rajdhani',sans-serif;font-size:1.1rem;font-weight:700">${escapeHtml(t.team_name)}</div>
+        <div style="color:var(--gold);font-family:'Rajdhani',sans-serif;margin-top:0.2rem">₹${Number(t.remaining_budget).toFixed(2)} Cr left</div>
+        <div style="font-size:0.78rem;color:var(--text-muted);margin-top:0.3rem">
+          ${squad.players.length} players · 🇮🇳 ${squad.indianCount} · 🌍 ${squad.foreignerCount}
+        </div>
+        ${t.is_host ? '<span class="badge badge-gold" style="margin-top:0.4rem">HOST</span>' : ''}
+      </div>`;
+  }).join('');
 
-  // Full sold list
   const soldContainer = document.getElementById('final-sold-list');
   soldContainer.innerHTML = (list || []).map(item => `
     <div class="sold-item ${!item.teamId ? 'unsold-item' : ''}">
@@ -507,14 +692,11 @@ socket.on('auction_ended', ({ teams, soldList: list }) => {
         ? '<span class="badge badge-red" style="font-size:0.65rem">UNSOLD</span>'
         : `<span class="sold-bid">₹${Number(item.bid).toFixed(2)}Cr</span>
            <span class="sold-team">${escapeHtml(item.teamName)}</span>`}
-    </div>
-  `).join('');
+    </div>`).join('');
 });
 
-// Chat
-socket.on('receive_message', (data) => {
-  addChatMsg(data);
-});
+// Chat messages
+socket.on('receive_message', (data) => addChatMsg(data));
 
 // Connection events
 socket.on('connect_error', () => toast('Connection lost — retrying...', 'warning'));
