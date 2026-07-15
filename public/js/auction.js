@@ -1136,3 +1136,16 @@ socket.on('reconnect', () => {
   toast('Reconnected!', 'success');
   socket.emit('join_room', { roomId, teamId });
 });
+
+// Mobile navigation tab switcher
+window.switchMobileTab = function (tab) {
+  const layout = document.getElementById('auction-layout');
+  if (!layout) return;
+  layout.classList.remove('show-left', 'show-center', 'show-right');
+  layout.classList.add(`show-${tab}`);
+
+  // Update tabs visual state
+  document.querySelectorAll('.mobile-nav-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.id === `mobile-tab-${tab}`);
+  });
+};

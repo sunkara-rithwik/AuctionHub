@@ -284,6 +284,56 @@
     .result-banner-title  { font-family:'Rajdhani',sans-serif; font-size:2rem; font-weight:700; }
     .result-banner.sold   .result-banner-title { color:#4ade80; }
     .result-banner.unsold .result-banner-title { color:#f87171; }
+
+    /* ── Mobile Navigation Tabs ── */
+    .mobile-nav-tabs {
+      display: none;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .mobile-nav-tab {
+      flex: 1;
+      padding: 0.8rem 0.5rem;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      text-align: center;
+      transition: all var(--transition);
+    }
+    .mobile-nav-tab:hover { color: var(--text-primary); }
+    .mobile-nav-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+
+    @media (max-width: 1024px) {
+      .mobile-nav-tabs { display: flex; }
+      
+      .auction-layout {
+        display: block !important;
+        max-height: none !important;
+        overflow: visible !important;
+      }
+      
+      .auction-layout .panel,
+      .auction-layout .center-panel,
+      .auction-layout .chat-panel {
+        display: none !important;
+        width: 100% !important;
+        height: calc(100vh - 56px - 41px - 40px) !important;
+        max-height: none !important;
+        overflow-y: auto !important;
+      }
+      
+      .show-left .panel { display: flex !important; }
+      .show-center .center-panel { display: flex !important; }
+      .show-right .chat-panel { display: flex !important; }
+    }
   </style>
 </head>
 <body>
@@ -396,8 +446,15 @@
   </div>
 </nav>
 
+<!-- Mobile Navigation (Only visible on max-width: 1024px) -->
+<div class="mobile-nav-tabs">
+  <button class="mobile-nav-tab" id="mobile-tab-left" onclick="switchMobileTab('left')">📊 Teams & Squads</button>
+  <button class="mobile-nav-tab active" id="mobile-tab-center" onclick="switchMobileTab('center')">🏏 Bidding Arena</button>
+  <button class="mobile-nav-tab" id="mobile-tab-right" onclick="switchMobileTab('right')">💬 Chat</button>
+</div>
+
 <!-- ══ Main Layout ════════════════════════════════════════════════════════ -->
-<div class="auction-layout" id="auction-layout">
+<div class="auction-layout show-center" id="auction-layout">
 
   <!-- ── LEFT: Teams / Squads / History ─────────────────────────────────── -->
   <div class="panel">
@@ -446,6 +503,18 @@
 
     <!-- Active Auction Content -->
     <div id="auction-content" style="display:none;flex-direction:column;gap:1rem">
+
+      <!-- Host Controls -->
+      <div class="host-bar" id="host-bar" style="display:none">
+        <span class="host-bar-label">⚡ Host</span>
+        <button class="btn btn-ghost btn-sm" onclick="hostAction('next_player')">Next Player →</button>
+        <button class="btn btn-danger btn-sm" onclick="hostAction('mark_unsold')">Mark Unsold</button>
+        <button class="btn btn-ghost btn-sm" id="pause-btn" onclick="hostAction('toggle_pause')">⏸ Pause</button>
+        <button class="btn btn-ghost btn-sm" onclick="hostAction('reset_timer')">🔄 Reset Timer</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--gold)" onclick="hostAction('retract_bid')">↩️ Undo Bid</button>
+        <button class="btn btn-ghost btn-sm" onclick="hostAction('add_time')">➕ 15s</button>
+        <button class="btn btn-ghost btn-sm" onclick="hostAction('restart_player')">🔁 Restart Player</button>
+      </div>
 
       <!-- Overall + Set progress -->
       <div>
@@ -505,14 +574,7 @@
         </div>
       </div>
 
-      <!-- Host Controls -->
-      <div class="host-bar" id="host-bar" style="display:none">
-        <span class="host-bar-label">⚡ Host</span>
-        <button class="btn btn-ghost btn-sm" onclick="hostAction('next_player')">Next Player →</button>
-        <button class="btn btn-danger btn-sm" onclick="hostAction('mark_unsold')">Mark Unsold</button>
-        <button class="btn btn-ghost btn-sm" id="pause-btn" onclick="hostAction('toggle_pause')">⏸ Pause</button>
-        <button class="btn btn-ghost btn-sm" onclick="hostAction('reset_timer')">🔄 Reset Timer</button>
-      </div>
+
 
     </div>
   </div>

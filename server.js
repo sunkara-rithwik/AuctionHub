@@ -335,6 +335,7 @@ async function advanceToNextPlayer(roomId) {
   state.currentBid        = Number(state.currentPlayer.base_price);
   state.highestBidderId   = null;
   state.highestBidderName = null;
+  state.bidHistory        = [];
 
   io.to(roomId).emit('player_changed', {
     player:       state.currentPlayer,
@@ -488,6 +489,7 @@ io.on('connection', (socket) => {
         soldList:          [],
         teamSquads:        {},
         globalPlayerIndex: 0,
+        bidHistory:        [],
         totalPlayers,
       });
 
@@ -516,6 +518,7 @@ io.on('connection', (socket) => {
     state.highestBidderId     = null;
     state.highestBidderName   = null;
     state.lastBidderId        = null;
+    state.bidHistory          = [];
 
     io.to(roomId).emit('set_started', {
       setIndex:    state.currentSetIndex,
@@ -578,6 +581,15 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Save history for undo/retract
+    if (!state.bidHistory) state.bidHistory = [];
+    state.bidHistory.push({
+      currentBid:        state.currentBid,
+      highestBidderId:   state.highestBidderId,
+      highestBidderName: state.highestBidderName,
+      lastBidderId:      state.lastBidderId
+    });
+
     // Accept bid
     state.currentBid        = amount;
     state.highestBidderId   = Number(teamId);
@@ -631,6 +643,66 @@ io.on('connection', (socket) => {
     if (!await verifyIsHost(socket, roomId)) return;
     resetTimer(roomId);
     io.to(roomId).emit('timer_reset', { timeLeft: AUCTION_TIMER_SECS });
+  });
+
+  // ── retract_bid (host only) ────────────────────────────────────────────────
+  socket.on('retract_bid', async ({ roomId }) => {
+    roomId = roomId.toUpperCase();
+    if (!await verifyIsHost(socket, roomId)) return;
+    const state = auctionStates.get(roomId);
+    if (!state || state.waitingForSetStart || !state.currentPlayer) return;
+
+    if (state.bidHistory && state.bidHistory.length > 0) {
+      const prev = state.bidHistory.pop();
+      state.currentBid        = prev.currentBid;
+      state.highestBidderId   = prev.highestBidderId;
+      state.highestBidderName = prev.highestBidderName;
+      state.lastBidderId      = prev.lastBidderId;
+    } else {
+      state.currentBid        = Number(state.currentPlayer.base_price);
+      state.highestBidderId   = null;
+      state.highestBidderName = null;
+      state.lastBidderId      = null;
+    }
+
+    io.to(roomId).emit('bid_updated', {
+      currentBid:        state.currentBid,
+      highestBidderName: state.highestBidderName,
+      highestBidderId:   state.highestBidderId,
+    });
+    resetTimer(roomId);
+  });
+
+  // ── add_time (host only) ───────────────────────────────────────────────────
+  socket.on('add_time', async ({ roomId }) => {
+    roomId = roomId.toUpperCase();
+    if (!await verifyIsHost(socket, roomId)) return;
+    const state = auctionStates.get(roomId);
+    if (!state || state.waitingForSetStart || state.isPaused) return;
+
+    state.timeLeft = Math.min(60, state.timeLeft + 15);
+    io.to(roomId).emit('timer_tick', { timeLeft: state.timeLeft });
+  });
+
+  // ── restart_player (host only) ─────────────────────────────────────────────
+  socket.on('restart_player', async ({ roomId }) => {
+    roomId = roomId.toUpperCase();
+    if (!await verifyIsHost(socket, roomId)) return;
+    const state = auctionStates.get(roomId);
+    if (!state || state.waitingForSetStart || !state.currentPlayer) return;
+
+    state.currentBid        = Number(state.currentPlayer.base_price);
+    state.highestBidderId   = null;
+    state.highestBidderName = null;
+    state.lastBidderId      = null;
+    state.bidHistory        = [];
+
+    io.to(roomId).emit('bid_updated', {
+      currentBid:        state.currentBid,
+      highestBidderName: null,
+      highestBidderId:   null,
+    });
+    resetTimer(roomId);
   });
 
   // ── send_message (chat) ────────────────────────────────────────────────────
