@@ -100,7 +100,7 @@ app.post('/api/rooms', async (req, res) => {
       attempts++;
     } while (attempts < 10);
 
-    const budget = Math.max(50, Math.min(200, Number(initialBudget) || 100));
+    const budget = Math.max(50, Math.min(500, Number(initialBudget) || 100));
 
     await db.query(
       `INSERT INTO rooms (room_id, host_name, is_private, initial_budget, status)

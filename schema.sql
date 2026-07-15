@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS ipl_players (
     role        VARCHAR(30),    -- Batsman | Bowler | All-Rounder | Wicketkeeper
     ipl_team    VARCHAR(50),    -- Real IPL team (display only)
     nationality VARCHAR(30)     DEFAULT 'Indian',
-    base_price  NUMERIC(10,2)   DEFAULT 0.50
+    base_price  NUMERIC(10,2)   DEFAULT 0.50,
+    stats       JSONB
 );
 
 -- Auction Results

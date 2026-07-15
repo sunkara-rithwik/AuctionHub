@@ -14,17 +14,18 @@
       display: grid;
       grid-template-columns: 300px 1fr 300px;
       gap: 0;
-      max-height: calc(100vh - 56px);
+      max-height: calc(100vh - 56px - 40px);
       overflow: hidden;
     }
 
     @media (max-width: 1024px) {
       .auction-layout { grid-template-columns: 1fr; grid-template-rows: auto auto auto; max-height: none; overflow: visible; }
       body { overflow-y: auto; }
+      .chat-panel { height: 400px !important; border-top: 1px solid var(--border); }
     }
 
     /* ── Panel Tabs ── */
-    .panel { overflow-y: auto; border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+    .panel { overflow: hidden; border-right: 1px solid var(--border); display: flex; flex-direction: column; }
     .panel:last-child { border-right: none; border-left: 1px solid var(--border); }
 
     .panel-tabs {
@@ -170,9 +171,24 @@
     .pause-title { font-family:'Rajdhani',sans-serif; font-size:2rem; font-weight:700; color:var(--gold); }
 
     /* ── Set Preview Overlay ── */
-    .set-preview-overlay { position:fixed; inset:0; background:rgba(5,6,15,0.92); z-index:160; display:none; flex-direction:column; align-items:center; backdrop-filter:blur(12px); overflow-y:auto; padding:2rem 1rem; }
-    .set-preview-overlay.active { display: flex; }
-    .set-preview-box { width:100%; max-width:900px; }
+    .set-preview-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(5,6,15,0.92);
+      z-index: 160;
+      display: none;
+      overflow-y: auto;
+      backdrop-filter: blur(12px);
+      padding: 2rem 1rem;
+    }
+    .set-preview-overlay.active {
+      display: block;
+    }
+    .set-preview-box {
+      width: 100%;
+      max-width: 900px;
+      margin: 0 auto;
+    }
     .set-preview-header { text-align:center; margin-bottom:1.5rem; }
     .set-preview-set-pill {
       display: inline-block;
@@ -211,8 +227,8 @@
     .sold-bid  { color:var(--gold); font-family:'Rajdhani',sans-serif; font-weight:700; white-space:nowrap; }
     .sold-team { color:var(--text-muted); font-size:0.72rem; white-space:nowrap; }
 
-    .chat-panel { display:flex; flex-direction:column; height:100%; padding:0; overflow:hidden; }
-    .chat-messages-area { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:0.4rem; padding:0.85rem; margin-bottom:0; }
+    .chat-panel { display:flex; flex-direction:column; height:100%; padding:0; overflow:hidden; min-height:0; }
+    .chat-messages-area { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:0.4rem; padding:0.85rem; margin-bottom:0; min-height:0; }
 
     /* ── Waiting ── */
     .waiting-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center; gap:1rem; padding:2rem; }
@@ -338,8 +354,7 @@
               <div id="ended-detail-team-rating" style="font-size:0.78rem;color:var(--text-secondary)">Rating: —/100</div>
             </div>
           </div>
-
-          <div style="display:grid;grid-template-columns:1fr 1.2fr;gap:1.5rem;flex:1;min-height:0;overflow:hidden">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.25rem;flex:1;min-height:0;overflow:hidden">
             <!-- Full Squad list column -->
             <div style="display:flex;flex-direction:column;height:100%;overflow:hidden">
               <h4 style="font-family:'Rajdhani',sans-serif;font-size:0.9rem;text-transform:uppercase;color:var(--text-secondary);margin-bottom:0.5rem">Full Roster (<span id="ended-detail-squad-count">0</span>)</h4>
@@ -350,6 +365,12 @@
             <div style="display:flex;flex-direction:column;height:100%;overflow:hidden">
               <h4 style="font-family:'Rajdhani',sans-serif;font-size:0.9rem;text-transform:uppercase;color:var(--gold);margin-bottom:0.5rem">🤖 AI Selected Playing 11</h4>
               <div id="ended-detail-playing11" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:0.35rem;padding-right:0.25rem"></div>
+            </div>
+
+            <!-- AI Squad Analysis column -->
+            <div style="display:flex;flex-direction:column;height:100%;overflow:hidden">
+              <h4 style="font-family:'Rajdhani',sans-serif;font-size:0.9rem;text-transform:uppercase;color:#3b82f6;margin-bottom:0.5rem">📊 AI Squad Analysis</h4>
+              <div id="ended-detail-analysis" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:0.85rem;padding-right:0.25rem"></div>
             </div>
           </div>
         </div>
@@ -515,6 +536,10 @@
 
 <!-- Result Banner -->
 <div id="result-banner-container"></div>
+
+<footer class="app-footer">
+  Maker & Designer: <span class="designer-name">SUNKARA RITHWIK</span>
+</footer>
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="js/auction.js"></script>

@@ -1,0 +1,20 @@
+services:
+  # Web service for the Socket.io Node.js app
+  - type: web
+    name: auction-hub
+    env: docker
+    dockerContext: .
+    dockerfilePath: Dockerfile
+    plan: free
+    port: 3000
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: auction-hub-db
+          property: connectionString
+
+databases:
+  # PostgreSQL database for persistent auction records
+  - name: auction-hub-db
+    plan: free
+    postgresMajorVersion: 15

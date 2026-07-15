@@ -534,14 +534,14 @@ socket.on('room_update', ({ teams }) => {
 socket.on('auction_initialized', ({ totalPlayers: total }) => {
   totalPlayers = total;
   showAuctionContent();
-  addChatMsg({ message: '🎺 Auction initialised! Waiting for Set 1 to begin...' }, true);
+  addChatMsg({ message: '🎺 Auction initialised!' }, true);
 });
 
 // Set preview
 socket.on('set_preview', (data) => {
   showAuctionContent(); // ensure layout is visible behind overlay
   showSetPreview(data);
-  addChatMsg({ message: `📋 ${data.label} preview — ${data.players.length} players` }, true);
+  addChatMsg({ message: `📋 Preview: ${data.label}` }, true);
 });
 
 // Set started by host
@@ -553,7 +553,7 @@ socket.on('set_started', ({ label, player, currentBid: bid, playerIndex, totalPl
   renderPlayerCard(player);
   renderBidUpdate(bid, null, null);
   updateTimer(TIMER_MAX);
-  addChatMsg({ message: `🏏 [${label}] Auction started! First up: ${player.name}` }, true);
+  addChatMsg({ message: `🏏 Started! First up: ${player.name}` }, true);
 });
 
 // State sync for reconnecting users
@@ -617,7 +617,7 @@ socket.on('player_changed', ({ player, currentBid: bid, playerIndex, totalPlayer
   renderPlayerCard(player);
   renderBidUpdate(bid, null, null);
   updateTimer(TIMER_MAX);
-  addChatMsg({ message: `🏏 Up next: ${player.name} (${player.role}) — Base: ₹${Number(player.base_price).toFixed(2)} Cr` }, true);
+  addChatMsg({ message: `🏏 Next: ${player.name} (Base: ₹${Number(player.base_price).toFixed(2)} Cr)` }, true);
 });
 
 // Player sold
@@ -625,7 +625,7 @@ socket.on('player_sold', ({ player, teamName: winnerName, bid, soldList: list })
   soldList = list;
   renderSoldHistory();
   showResultBanner('sold', '🔨 SOLD!', `${player.name} → ${winnerName} @ ₹${Number(bid).toFixed(2)} Cr`);
-  addChatMsg({ message: `🔨 ${player.name} SOLD to ${winnerName} for ₹${Number(bid).toFixed(2)} Cr!` }, true);
+  addChatMsg({ message: `🔨 ${player.name} SOLD to ${winnerName} (₹${Number(bid).toFixed(2)} Cr)` }, true);
 });
 
 // Player unsold
@@ -633,7 +633,7 @@ socket.on('player_unsold', ({ player, soldList: list }) => {
   soldList = list;
   renderSoldHistory();
   showResultBanner('unsold', '❌ UNSOLD', `${player.name} goes unsold`);
-  addChatMsg({ message: `❌ ${player.name} goes UNSOLD.` }, true);
+  addChatMsg({ message: `❌ ${player.name} UNSOLD` }, true);
 });
 
 // Auction paused / resumed
@@ -642,7 +642,7 @@ socket.on('auction_paused', ({ isPaused: paused }) => {
   setPauseOverlay(paused);
   const btn = document.getElementById('pause-btn');
   if (btn) btn.textContent = paused ? '▶ Resume' : '⏸ Pause';
-  addChatMsg({ message: paused ? '⏸ Auction paused by host' : '▶ Auction resumed!' }, true);
+  addChatMsg({ message: paused ? '⏸ Paused' : '▶ Resumed' }, true);
 });
 
 // Host disconnected / reconnected
@@ -676,6 +676,30 @@ function calculateSquadScore(squad) {
   let spinnerCount = 0;
   let overseasCount = 0;
 
+  // Stats calculation variables
+  let totalRuns = 0;
+  let batSrSum = 0;
+  let batSrCount = 0;
+  let batAvgSum = 0;
+  let batAvgCount = 0;
+  let totalWickets = 0;
+  let bowlEconSum = 0;
+  let bowlEconCount = 0;
+  let spinEconSum = 0;
+  let spinEconCount = 0;
+  let paceEconSum = 0;
+  let paceEconCount = 0;
+  let wkCatches = 0;
+  let wkStumpings = 0;
+
+  const getStatsFallback = p => {
+    if (p.stats) return p.stats;
+    if (p.role === 'Batsman') return { runs: 1200, strike_rate: 130.0, average: 28.0 };
+    if (p.role === 'Wicketkeeper') return { runs: 1000, strike_rate: 128.0, average: 26.0, catches: 15, stumpings: 3 };
+    if (p.role === 'All-Rounder') return { runs: 800, strike_rate: 132.0, average: 22.0, wickets: 25, economy: 8.20 };
+    return { wickets: 30, economy: 8.10, bowling_strike_rate: 19.5 };
+  };
+
   squad.players.forEach(p => {
     let r = 60;
     const bp = Number(p.base_price);
@@ -696,6 +720,38 @@ function calculateSquadScore(squad) {
     else if (p.role === 'Spinner') spinnerCount++;
 
     if (p.nationality !== 'Indian') overseasCount++;
+
+    // Statistics Aggregation
+    const s = getStatsFallback(p);
+    if (s.runs !== undefined) {
+      totalRuns += s.runs;
+      if (s.strike_rate) {
+        batSrSum += s.strike_rate;
+        batSrCount++;
+      }
+      if (s.average) {
+        batAvgSum += s.average;
+        batAvgCount++;
+      }
+    }
+    if (s.wickets !== undefined) {
+      totalWickets += s.wickets;
+      if (s.economy) {
+        bowlEconSum += s.economy;
+        bowlEconCount++;
+        if (p.role === 'Spinner') {
+          spinEconSum += s.economy;
+          spinEconCount++;
+        } else if (p.role === 'Pacer') {
+          paceEconSum += s.economy;
+          paceEconCount++;
+        }
+      }
+    }
+    if (p.role === 'Wicketkeeper') {
+      if (s.catches) wkCatches += s.catches;
+      if (s.stumpings) wkStumpings += s.stumpings;
+    }
   });
 
   const count = squad.players.length;
@@ -730,6 +786,77 @@ function calculateSquadScore(squad) {
   else if (finalScore >= 40) grade = 'C';
   else grade = 'D';
 
+  // Compute Averages
+  const avgSr = batSrCount > 0 ? (batSrSum / batSrCount) : 0;
+  const avgBatAvg = batAvgCount > 0 ? (batAvgSum / batAvgCount) : 0;
+  const avgEcon = bowlEconCount > 0 ? (bowlEconSum / bowlEconCount) : 0;
+  const avgSpinEcon = spinEconCount > 0 ? (spinEconSum / spinEconCount) : 0;
+  const avgPaceEcon = paceEconCount > 0 ? (paceEconSum / paceEconCount) : 0;
+
+  // Strengths & Weaknesses generator
+  const strengths = [];
+  const weaknesses = [];
+
+  if (avgSr >= 140) {
+    strengths.push(`<b>High-Octane Batting:</b> Aggressive average strike rate of ${avgSr.toFixed(1)}. Highly explosive.`);
+  } else if (avgSr > 0 && avgSr < 131) {
+    weaknesses.push(`<b>Slow Run Rate:</b> Team strike rate averages ${avgSr.toFixed(1)}. May struggle to set high scores.`);
+  }
+
+  if (avgBatAvg >= 32) {
+    strengths.push(`<b>Stable Top Order:</b> Roster batting average is a solid ${avgBatAvg.toFixed(1)}, minimizing collapse risks.`);
+  } else if (avgBatAvg > 0 && avgBatAvg < 25) {
+    weaknesses.push(`<b>Fragile Batting:</b> Batting average of ${avgBatAvg.toFixed(1)} indicates collapse vulnerability.`);
+  }
+
+  if (avgEcon > 0 && avgEcon <= 7.8) {
+    strengths.push(`<b>Economical Bowling:</b> Aggregate economy rate of ${avgEcon.toFixed(2)} will dry up runs.`);
+  } else if (avgEcon > 8.5) {
+    weaknesses.push(`<b>Expensive Bowling:</b> Leaky fast/spin line-up averaging ${avgEcon.toFixed(2)}.`);
+  }
+
+  if (totalWickets >= 400) {
+    strengths.push(`<b>Experienced Wicket-Takers:</b> Combined pool of ${totalWickets} wickets brings high-pressure experience.`);
+  }
+
+  if (spinnerCount >= 2 && avgSpinEcon > 0 && avgSpinEcon <= 7.6) {
+    strengths.push(`<b>Spin Lockdown:</b> Spinners maintain a tight economy of ${avgSpinEcon.toFixed(2)} to choke the middle overs.`);
+  } else if (spinnerCount === 0) {
+    weaknesses.push(`<b>No Spin Options:</b> Lacks specialized spinners, which could be disastrous on slower tracks.`);
+  }
+
+  if (pacerCount >= 3 && avgPaceEcon > 0 && avgPaceEcon <= 8.2) {
+    strengths.push(`<b>Pace Arsenal:</b> Fast bowlers have a strong foundation with a tight economy of ${avgPaceEcon.toFixed(2)}.`);
+  } else if (pacerCount === 0) {
+    weaknesses.push(`<b>Lacks Fast Bowlers:</b> No quick pacers, presenting a severe disadvantage in powerplay and death overs.`);
+  }
+
+  if (!hasWk) {
+    weaknesses.push(`<b>No Wicketkeeper:</b> Missing specialized gloves behind the stumps! Makeshift keeper required.`);
+  } else if (hasWk && wkCatches + wkStumpings > 40) {
+    strengths.push(`<b>Safe Hands:</b> Solid wicketkeeping stats with ${wkCatches + wkStumpings} combined dismissals.`);
+  }
+
+  if (arCount >= 3) {
+    strengths.push(`<b>Superb All-round Balance:</b> ${arCount} all-rounders provide high flexibility and late-order hitting.`);
+  } else if (arCount === 0) {
+    weaknesses.push(`<b>Lacks All-Rounders:</b> Roster lacks dual-role players, restricting team flexibility.`);
+  }
+
+  if (strengths.length === 0) strengths.push(`<b>Balanced Roster:</b> Steady squad without extreme traits.`);
+  if (weaknesses.length === 0) weaknesses.push(`<b>Good Structure:</b> No major vulnerabilities found in team composition.`);
+
+  let verdict = "";
+  if (finalScore >= 88) {
+    verdict = "🏆 <b>Championship Contenders:</b> A beautifully balanced squad combining explosive hitting, tight bowling, and high tactical flexibility. Expected to finish in the top 2.";
+  } else if (finalScore >= 78) {
+    verdict = "📈 <b>Playoff Candidates:</b> A strong squad with key match-winners. If they manage to work around their minor weaknesses, a top 4 finish is likely.";
+  } else if (finalScore >= 65) {
+    verdict = "⚖️ <b>Mid-Table Finishers:</b> A decent squad but lacks depth in key areas. Will need standout individual performances to make the playoffs.";
+  } else {
+    verdict = "⚠️ <b>Rebuilding Phase:</b> Significant roster imbalances or lack of core wicket-takers/bowlers. Likely to struggle and finish in the bottom tier.";
+  }
+
   return {
     rating: finalScore,
     grade,
@@ -740,7 +867,15 @@ function calculateSquadScore(squad) {
     batCount,
     arCount,
     bowlCount: bowlers,
-    avgRating: Math.round(avgRating)
+    avgRating: Math.round(avgRating),
+    totalRuns,
+    avgSr,
+    avgBatAvg,
+    totalWickets,
+    avgEcon,
+    strengths,
+    weaknesses,
+    verdict
   };
 }
 
@@ -883,6 +1018,71 @@ window.viewEndedTeamDetail = function(teamIdStr) {
         </div>`).join('');
     }
     p11Container.innerHTML = html;
+  }
+
+  // Render AI Squad Analysis
+  const analysisContainer = document.getElementById('ended-detail-analysis');
+  if (!analysisContainer) return;
+
+  if (squad.players.length === 0) {
+    analysisContainer.innerHTML = '<div class="empty-state">No squad metrics to analyze.</div>';
+  } else {
+    const strengthsHtml = evaluation.strengths.map(s => `
+      <div style="display:flex;align-items:flex-start;gap:0.4rem;font-size:0.78rem;line-height:1.35;margin-bottom:0.4rem;color:#e2e8f0">
+        <span style="color:#4ade80">✓</span>
+        <span>${s}</span>
+      </div>`).join('');
+
+    const weaknessesHtml = evaluation.weaknesses.map(w => `
+      <div style="display:flex;align-items:flex-start;gap:0.4rem;font-size:0.78rem;line-height:1.35;margin-bottom:0.4rem;color:#fca5a5">
+        <span style="color:#ef4444">⚠</span>
+        <span>${w}</span>
+      </div>`).join('');
+
+    analysisContainer.innerHTML = `
+      <!-- Stats Summary Grid -->
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:var(--radius-md);padding:0.6rem 0.8rem;display:flex;flex-direction:column;gap:0.35rem;font-size:0.75rem">
+        <div class="flex-between">
+          <span style="color:var(--text-muted)">Total Runs:</span>
+          <span style="font-weight:700;color:var(--text-primary)">${evaluation.totalRuns}</span>
+        </div>
+        <div class="flex-between">
+          <span style="color:var(--text-muted)">Avg Strike Rate:</span>
+          <span style="font-weight:700;color:var(--gold)">${evaluation.avgSr > 0 ? evaluation.avgSr.toFixed(1) : '—'}</span>
+        </div>
+        <div class="flex-between">
+          <span style="color:var(--text-muted)">Avg Batting Avg:</span>
+          <span style="font-weight:700;color:var(--text-primary)">${evaluation.avgBatAvg > 0 ? evaluation.avgBatAvg.toFixed(1) : '—'}</span>
+        </div>
+        <div style="border-top:1px solid rgba(255,255,255,0.05);margin:0.25rem 0"></div>
+        <div class="flex-between">
+          <span style="color:var(--text-muted)">Total Wickets:</span>
+          <span style="font-weight:700;color:var(--text-primary)">${evaluation.totalWickets}</span>
+        </div>
+        <div class="flex-between">
+          <span style="color:var(--text-muted)">Avg Economy:</span>
+          <span style="font-weight:700;color:#60a5fa">${evaluation.avgEcon > 0 ? evaluation.avgEcon.toFixed(2) : '—'}</span>
+        </div>
+      </div>
+
+      <!-- Strengths -->
+      <div style="margin-top:0.4rem">
+        <div style="font-family:'Rajdhani',sans-serif;font-size:0.72rem;font-weight:700;text-transform:uppercase;color:#4ade80;letter-spacing:0.06em;margin-bottom:0.35rem">Strengths</div>
+        ${strengthsHtml}
+      </div>
+
+      <!-- Weaknesses -->
+      <div>
+        <div style="font-family:'Rajdhani',sans-serif;font-size:0.72rem;font-weight:700;text-transform:uppercase;color:#f87171;letter-spacing:0.06em;margin-bottom:0.35rem">Weaknesses</div>
+        ${weaknessesHtml}
+      </div>
+
+      <!-- AI Verdict -->
+      <div style="margin-top:0.4rem;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:var(--radius-md);padding:0.65rem 0.8rem;font-size:0.75rem;line-height:1.4">
+        <div style="font-family:'Rajdhani',sans-serif;font-weight:700;text-transform:uppercase;color:#60a5fa;letter-spacing:0.06em;margin-bottom:0.2rem">AI Verdict</div>
+        <div style="color:#bfdbfe">${evaluation.verdict}</div>
+      </div>
+    `;
   }
 };
 

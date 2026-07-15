@@ -302,11 +302,11 @@
               <label class="input-label">Initial Budget</label>
               <span class="budget-value" id="budget-display">₹100 Cr</span>
             </div>
-            <input id="budget-slider" type="range" min="50" max="200" step="10" value="100"
+            <input id="budget-slider" type="range" min="50" max="500" step="10" value="100"
               oninput="document.getElementById('budget-display').textContent = '₹' + this.value + ' Cr'" />
             <div class="flex-between" style="margin-top:0.3rem">
               <span style="font-size:0.75rem;color:var(--text-muted)">₹50 Cr</span>
-              <span style="font-size:0.75rem;color:var(--text-muted)">₹200 Cr</span>
+              <span style="font-size:0.75rem;color:var(--text-muted)">₹500 Cr</span>
             </div>
           </div>
 
@@ -352,6 +352,10 @@
     </div>
   </div>
 </section>
+
+<footer class="app-footer">
+  Maker & Designer: <span class="designer-name">SUNKARA RITHWIK</span>
+</footer>
 
 <script src="js/home.js"></script>
 </body>
