@@ -89,18 +89,20 @@ function renderTeams(teams) {
     const online = !!t.socket_id;
     const hostBadge = t.is_host ? '<span class="badge badge-gold" style="font-size:0.65rem">HOST</span>' : '';
     const meBadge   = isMe ? '<span class="badge badge-blue" style="font-size:0.65rem">YOU</span>' : '';
+    const details = getTeamDetails(t.team_name);
 
     return `
-      <div class="team-row ${t.is_host ? 'host-row' : ''}">
+      <div class="team-row ${t.is_host ? 'host-row' : ''}" style="border-left: 3px solid ${details.color}">
         <div class="flex" style="align-items:center;gap:0.6rem;flex:1;overflow:hidden">
           <div class="team-status-dot ${online ? 'dot-online' : 'dot-offline'}"></div>
+          <span style="font-size:1.15rem;margin-right:0.1rem">${details.logo}</span>
           <span class="team-name-display" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
             ${escapeHtml(t.team_name)}
           </span>
           ${hostBadge}${meBadge}
         </div>
         <div class="flex" style="align-items:center;gap:0.5rem">
-          <span class="budget-display">₹${Number(t.remaining_budget).toFixed(0)} Cr</span>
+          <span class="budget-display" style="color:${details.color}">₹${Number(t.remaining_budget).toFixed(0)} Cr</span>
           ${isHost && !t.is_host && !isMe
             ? `<button class="btn btn-danger btn-sm" onclick="kickPlayer(${t.team_id})">Kick</button>`
             : ''}
@@ -162,3 +164,21 @@ socket.on('error_msg', ({ message }) => {
 socket.on('connect_error', () => {
   toast('Connection lost — retrying...', 'warning');
 });
+
+// ─── Fixed IPL Teams Configuration ───────────────────────────────────────────
+const IPL_TEAMS = [
+  { name: 'Chennai Super Kings', short: 'CSK', logo: '🦁', color: '#f0b429' },
+  { name: 'Mumbai Indians', short: 'MI', logo: '🌀', color: '#004ba0' },
+  { name: 'Royal Challengers Bengaluru', short: 'RCB', logo: '👑', color: '#ec1c24' },
+  { name: 'Kolkata Knight Riders', short: 'KKR', logo: '🛡️', color: '#3a225d' },
+  { name: 'Delhi Capitals', short: 'DC', logo: '🐯', color: '#004ba0' },
+  { name: 'Punjab Kings', short: 'PBKS', logo: '🦁', color: '#e81c24' },
+  { name: 'Rajasthan Royals', short: 'RR', logo: '👑', color: '#ea1a85' },
+  { name: 'Sunrisers Hyderabad', short: 'SRH', logo: '🦅', color: '#ff3c00' },
+  { name: 'Lucknow Super Giants', short: 'LSG', logo: '🦅', color: '#00a1ec' },
+  { name: 'Gujarat Titans', short: 'GT', logo: '⚡', color: '#0b2240' }
+];
+
+function getTeamDetails(name) {
+  return IPL_TEAMS.find(t => t.name === name) || { logo: '🏏', short: '', color: 'var(--blue-electric)' };
+}

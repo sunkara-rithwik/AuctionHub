@@ -754,3 +754,9 @@ input[type="range"]::-webkit-slider-thumb {
   font-weight: 700;
   text-shadow: 0 0 10px rgba(240, 180, 41, 0.35);
 }
+
+/* Select options styling */
+select.input-field option {
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+}

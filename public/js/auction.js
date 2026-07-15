@@ -101,7 +101,11 @@ window.switchTab = function (tab) {
 
 // ─── Navbar ───────────────────────────────────────────────────────────────────
 document.getElementById('nav-room-info').textContent = `Room: ${roomId}`;
-document.getElementById('nav-team-info').textContent = teamName;
+const details = getTeamDetails(teamName);
+const navTeamEl = document.getElementById('nav-team-info');
+if (navTeamEl) {
+  navTeamEl.innerHTML = `<span style="font-size:1.15rem;margin-right:0.3rem">${details.logo}</span> ${escapeHtml(teamName)}`;
+}
 if (isHost) document.getElementById('host-bar').style.display = 'flex';
 
 // ─── My Budget + Squad Display ────────────────────────────────────────────────
@@ -296,19 +300,20 @@ function renderTeams(teams) {
       const maxBudget = teams.reduce((mx, x) => Math.max(mx, Number(x.remaining_budget)), 1);
       const budgetPct = (Number(t.remaining_budget) / maxBudget * 100).toFixed(1);
       const mySquad   = teamSquads[t.team_id] || { players: [], indianCount: 0, foreignerCount: 0 };
+      const details   = getTeamDetails(t.team_name);
 
       return `
-        <div class="team-row-auction ${isMe ? 'my-team' : ''}">
+        <div class="team-row-auction ${isMe ? 'my-team' : ''}" style="border-left: 3px solid ${details.color}">
           <div class="team-row-top">
             <span style="font-size:0.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">
-              ${t.is_host ? '👑 ' : ''}${escapeHtml(t.team_name)}${isMe ? ' <span style="color:var(--blue-bright);font-size:0.72rem">(You)</span>' : ''}
+              ${t.is_host ? '👑 ' : ''}<span style="margin-right:0.25rem">${details.logo}</span>${escapeHtml(t.team_name)}${isMe ? ' <span style="color:var(--blue-bright);font-size:0.72rem">(You)</span>' : ''}
             </span>
-            <span style="font-family:'Rajdhani',sans-serif;font-size:0.9rem;color:var(--gold);white-space:nowrap">
+            <span style="font-family:'Rajdhani',sans-serif;font-size:0.9rem;color:${details.color};white-space:nowrap;font-weight:700">
               ₹${Number(t.remaining_budget).toFixed(2)}Cr
             </span>
           </div>
           <div class="team-budget-bar-wrap">
-            <div class="team-budget-bar" style="width:${budgetPct}%"></div>
+            <div class="team-budget-bar" style="width:${budgetPct}%; background:${details.color}"></div>
           </div>
           <div style="font-size:0.68rem;color:var(--text-muted);margin-top:0.2rem">
             Squad: ${mySquad.players.length}/${MAX_SQUAD} &nbsp;·&nbsp;
@@ -337,6 +342,7 @@ function renderSquads() {
     const squad  = teamSquads[team.team_id] || { players: [], indianCount: 0, foreignerCount: 0 };
     const isMe   = team.team_id === teamId;
     const isFull = squad.players.length >= MAX_SQUAD;
+    const details = getTeamDetails(team.team_name);
 
     const indPill  = squad.indianCount  >= MAX_INDIANS    ? 'full'    : squad.indianCount  >= MAX_INDIANS - 3  ? 'warning' : 'ok';
     const forPill  = squad.foreignerCount >= MAX_FOREIGNERS ? 'full'  : squad.foreignerCount >= MAX_FOREIGNERS - 2 ? 'warning' : 'ok';
@@ -366,10 +372,10 @@ function renderSquads() {
         }).join('');
 
     return `
-      <div class="squad-team-block" style="margin-bottom:0.5rem">
+      <div class="squad-team-block" style="margin-bottom:0.5rem; border-left: 3px solid ${details.color}">
         <div class="squad-team-header" onclick="toggleSquad(${team.team_id})">
           <span class="squad-team-name ${isMe ? 'my-squad' : ''}">
-            ${team.is_host ? '👑 ' : ''}${escapeHtml(team.team_name)}${isMe ? ' (You)' : ''}
+            ${team.is_host ? '👑 ' : ''}<span style="margin-right:0.25rem">${details.logo}</span>${escapeHtml(team.team_name)}${isMe ? ' (You)' : ''}
           </span>
           <span class="squad-team-count">${squad.players.length}/${MAX_SQUAD} ▾</span>
         </div>
@@ -1149,3 +1155,21 @@ window.switchMobileTab = function (tab) {
     btn.classList.toggle('active', btn.id === `mobile-tab-${tab}`);
   });
 };
+
+// ─── Fixed IPL Teams Configuration ───────────────────────────────────────────
+const IPL_TEAMS = [
+  { name: 'Chennai Super Kings', short: 'CSK', logo: '🦁', color: '#f0b429' },
+  { name: 'Mumbai Indians', short: 'MI', logo: '🌀', color: '#004ba0' },
+  { name: 'Royal Challengers Bengaluru', short: 'RCB', logo: '👑', color: '#ec1c24' },
+  { name: 'Kolkata Knight Riders', short: 'KKR', logo: '🛡️', color: '#3a225d' },
+  { name: 'Delhi Capitals', short: 'DC', logo: '🐯', color: '#004ba0' },
+  { name: 'Punjab Kings', short: 'PBKS', logo: '🦁', color: '#e81c24' },
+  { name: 'Rajasthan Royals', short: 'RR', logo: '👑', color: '#ea1a85' },
+  { name: 'Sunrisers Hyderabad', short: 'SRH', logo: '🦅', color: '#ff3c00' },
+  { name: 'Lucknow Super Giants', short: 'LSG', logo: '🦅', color: '#00a1ec' },
+  { name: 'Gujarat Titans', short: 'GT', logo: '⚡', color: '#0b2240' }
+];
+
+function getTeamDetails(name) {
+  return IPL_TEAMS.find(t => t.name === name) || { logo: '🏏', short: '', color: 'var(--blue-electric)' };
+}
