@@ -6,6 +6,24 @@
 // ─── State ────────────────────────────────────────────────────────────────────
 let roomType = 'public';
 
+// ─── Fixed IPL Teams Configuration ───────────────────────────────────────────
+const IPL_TEAMS = [
+  { name: 'Chennai Super Kings', short: 'CSK', logo: '🦁', color: '#f0b429' },
+  { name: 'Mumbai Indians', short: 'MI', logo: '🌀', color: '#004ba0' },
+  { name: 'Royal Challengers Bengaluru', short: 'RCB', logo: '👑', color: '#000000' },
+  { name: 'Kolkata Knight Riders', short: 'KKR', logo: '🛡️', color: '#3a225d' },
+  { name: 'Delhi Capitals', short: 'DC', logo: '🐯', color: '#004ba0' },
+  { name: 'Punjab Kings', short: 'PBKS', logo: '🦁', color: '#e81c24' },
+  { name: 'Rajasthan Royals', short: 'RR', logo: '👑', color: '#ea1a85' },
+  { name: 'Sunrisers Hyderabad', short: 'SRH', logo: '🦅', color: '#ff3c00' },
+  { name: 'Lucknow Super Giants', short: 'LSG', logo: '🦅', color: '#00a1ec' },
+  { name: 'Gujarat Titans', short: 'GT', logo: '⚡', color: '#0b2240' }
+];
+
+function getTeamDetails(name) {
+  return IPL_TEAMS.find(t => t.name === name) || { logo: '🏏', short: '', color: 'var(--blue-electric)' };
+}
+
 // ─── Utilities ───────────────────────────────────────────────────────────────
 function toast(msg, type = 'info') {
   const container = document.getElementById('toast-container');
@@ -157,23 +175,6 @@ document.getElementById('room-code').addEventListener('input', function () {
 loadPublicRooms();
 setInterval(loadPublicRooms, 8000); // Refresh every 8s
 
-// ─── Fixed IPL Teams Configuration & Auto-Disable taken teams ───────────────
-const IPL_TEAMS = [
-  { name: 'Chennai Super Kings', short: 'CSK', logo: '🦁', color: '#f0b429' },
-  { name: 'Mumbai Indians', short: 'MI', logo: '🌀', color: '#004ba0' },
-  { name: 'Royal Challengers Bengaluru', short: 'RCB', logo: '👑', color: '#000000' },
-  { name: 'Kolkata Knight Riders', short: 'KKR', logo: '🛡️', color: '#3a225d' },
-  { name: 'Delhi Capitals', short: 'DC', logo: '🐯', color: '#004ba0' },
-  { name: 'Punjab Kings', short: 'PBKS', logo: '🦁', color: '#e81c24' },
-  { name: 'Rajasthan Royals', short: 'RR', logo: '👑', color: '#ea1a85' },
-  { name: 'Sunrisers Hyderabad', short: 'SRH', logo: '🦅', color: '#ff3c00' },
-  { name: 'Lucknow Super Giants', short: 'LSG', logo: '🦅', color: '#00a1ec' },
-  { name: 'Gujarat Titans', short: 'GT', logo: '⚡', color: '#0b2240' }
-];
-
-function getTeamDetails(name) {
-  return IPL_TEAMS.find(t => t.name === name) || { logo: '🏏', short: '', color: 'var(--blue-electric)' };
-}
 
 const roomCodeInput = document.getElementById('room-code');
 const joinTeamSelect = document.getElementById('team-name');
