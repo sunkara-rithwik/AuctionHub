@@ -456,8 +456,8 @@ io.on('connection', (socket) => {
       if (!await verifyIsHost(socket, roomId)) return;
 
       const teams = await getRoomTeams(roomId);
-      if (teams.length < 3) {
-        socket.emit('error_msg', { message: 'Need at least 3 teams to start.' });
+      if (teams.length < 1) {
+        socket.emit('error_msg', { message: 'Need at least 1 team to start.' });
         return;
       }
 

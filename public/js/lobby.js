@@ -117,13 +117,13 @@ function updateStartButton(teamCount) {
   const btn  = document.getElementById('start-btn');
   const hint = document.getElementById('start-hint');
 
-  if (teamCount >= 3) {
+  if (teamCount >= 1) {
     btn.disabled = false;
-    hint.textContent = `${teamCount} team${teamCount > 1 ? 's' : ''} ready — start when you're set!`;
+    hint.textContent = `Ready to start — start when you're set!`;
     hint.style.color = 'var(--green-sold)';
   } else {
     btn.disabled = true;
-    hint.textContent = `Need ${3 - teamCount} more team${3 - teamCount > 1 ? 's' : ''} to start`;
+    hint.textContent = `Need at least 1 team to start`;
     hint.style.color = '';
   }
 }
