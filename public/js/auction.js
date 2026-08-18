@@ -594,11 +594,6 @@ socket.on('squad_update', ({ teamSquads: squads }) => {
 // Bid updated
 socket.on('bid_updated', ({ currentBid: bid, highestBidderName, highestBidderId }) => {
   renderBidUpdate(bid, highestBidderName, highestBidderId);
-  if (highestBidderId === teamId) {
-    toast(`Your bid of ₹${bid.toFixed(2)} Cr is leading! 🔥`, 'success');
-  } else {
-    toast(`${highestBidderName} bid ₹${bid.toFixed(2)} Cr`, 'info');
-  }
 });
 
 // Bid rejected

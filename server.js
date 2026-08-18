@@ -547,9 +547,8 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // ── Consecutive bid prevention (only when 2+ teams in room) ──
-    const roomTeams = await getRoomTeams(roomId);
-    if (roomTeams.length > 1 && Number(teamId) === state.lastBidderId) {
+    // ── Consecutive bid prevention ──
+    if (Number(teamId) === state.lastBidderId) {
       socket.emit('bid_rejected', { message: '⛔ Wait for another team to bid before bidding again!' });
       return;
     }
