@@ -187,7 +187,7 @@ app.get('/api/rooms/:id', async (req, res) => {
 });
 
 // ─── Auction Timer ────────────────────────────────────────────────────────────
-const AUCTION_TIMER_SECS = 15;
+const AUCTION_TIMER_SECS = 8;
 
 function startTimer(roomId) {
   const state = auctionStates.get(roomId);

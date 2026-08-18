@@ -15,7 +15,7 @@ if (!roomId || !teamId) { window.location.href = '/'; }
 // ─── State ────────────────────────────────────────────────────────────────────
 let currentBid       = 0;
 let currentPlayer    = null;
-let timeLeft         = 15;
+let timeLeft         = 8;
 let totalPlayers     = 0;
 let globalPlayerIdx  = 0;
 let isPaused         = false;
@@ -23,7 +23,7 @@ let allTeams         = [];
 let soldList         = [];
 let teamSquads       = {};          // teamId → {players[], indianCount, foreignerCount}
 let currentSetLabel  = '';
-const TIMER_MAX      = 15;
+const TIMER_MAX      = 8;
 const MAX_SQUAD      = 25;
 const MAX_INDIANS    = 17;
 const MAX_FOREIGNERS = 8;
