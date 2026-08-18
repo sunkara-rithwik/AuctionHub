@@ -6,24 +6,6 @@
 // ─── State ────────────────────────────────────────────────────────────────────
 let roomType = 'public';
 
-// ─── Fixed IPL Teams Configuration ───────────────────────────────────────────
-const IPL_TEAMS = [
-  { name: 'Chennai Super Kings', short: 'CSK', logo: '🦁', color: '#f0b429' },
-  { name: 'Mumbai Indians', short: 'MI', logo: '🌀', color: '#004ba0' },
-  { name: 'Royal Challengers Bengaluru', short: 'RCB', logo: '👑', color: '#000000' },
-  { name: 'Kolkata Knight Riders', short: 'KKR', logo: '🛡️', color: '#3a225d' },
-  { name: 'Delhi Capitals', short: 'DC', logo: '🐯', color: '#004ba0' },
-  { name: 'Punjab Kings', short: 'PBKS', logo: '🦁', color: '#e81c24' },
-  { name: 'Rajasthan Royals', short: 'RR', logo: '👑', color: '#ea1a85' },
-  { name: 'Sunrisers Hyderabad', short: 'SRH', logo: '🦅', color: '#ff3c00' },
-  { name: 'Lucknow Super Giants', short: 'LSG', logo: '🦅', color: '#00a1ec' },
-  { name: 'Gujarat Titans', short: 'GT', logo: '⚡', color: '#0b2240' }
-];
-
-function getTeamDetails(name) {
-  return IPL_TEAMS.find(t => t.name === name) || { logo: '🏏', short: '', color: 'var(--blue-electric)' };
-}
-
 // ─── Utilities ───────────────────────────────────────────────────────────────
 function toast(msg, type = 'info') {
   const container = document.getElementById('toast-container');
@@ -158,8 +140,6 @@ window.quickJoin = function (roomId) {
   document.getElementById('room-code').value = roomId;
   document.getElementById('team-name').focus();
   document.getElementById('join-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
-  // Trigger check immediately on quick join
-  if (window.checkTakenTeams) window.checkTakenTeams();
 };
 
 function escapeHtml(str) {
@@ -174,40 +154,3 @@ document.getElementById('room-code').addEventListener('input', function () {
 // Load rooms on page load
 loadPublicRooms();
 setInterval(loadPublicRooms, 8000); // Refresh every 8s
-
-
-const roomCodeInput = document.getElementById('room-code');
-const joinTeamSelect = document.getElementById('team-name');
-
-window.checkTakenTeams = async function() {
-  const code = roomCodeInput.value.trim().toUpperCase();
-  if (code.length === 6) {
-    try {
-      const res = await fetch(`/api/rooms/${code}`);
-      if (res.ok) {
-        const data = await res.json();
-        const takenTeams = data.teams.map(t => t.team_name);
-        
-        // Loop through select options and disable if taken
-        Array.from(joinTeamSelect.options).forEach(opt => {
-          if (!opt.value) return;
-          const isTaken = takenTeams.includes(opt.value);
-          opt.disabled = isTaken;
-          if (isTaken) {
-            opt.textContent = `${opt.value} (Already Taken)`;
-          } else {
-            const details = getTeamDetails(opt.value);
-            opt.textContent = `${details.logo} ${opt.value} (${details.short})`;
-          }
-        });
-      }
-    } catch (err) {
-      console.error('Failed to fetch taken teams:', err);
-    }
-  }
-};
-
-if (roomCodeInput && joinTeamSelect) {
-  roomCodeInput.addEventListener('input', window.checkTakenTeams);
-  roomCodeInput.addEventListener('change', window.checkTakenTeams);
-}

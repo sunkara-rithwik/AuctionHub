@@ -37,19 +37,6 @@ const ROLE_SETS = [
 const auctionStates = new Map();
 const hostMap       = new Map();
 
-const VALID_IPL_TEAMS = [
-  'Chennai Super Kings',
-  'Mumbai Indians',
-  'Royal Challengers Bengaluru',
-  'Kolkata Knight Riders',
-  'Delhi Capitals',
-  'Punjab Kings',
-  'Rajasthan Royals',
-  'Sunrisers Hyderabad',
-  'Lucknow Super Giants',
-  'Gujarat Titans'
-];
-
 // Helper to verify if a socket belongs to the host of a room
 async function verifyIsHost(socket, roomId) {
   if (!roomId) return false;
@@ -101,8 +88,8 @@ async function emitRoomUpdate(roomId) {
 app.post('/api/rooms', async (req, res) => {
   try {
     const { hostName, isPrivate, initialBudget } = req.body;
-    if (!hostName || !VALID_IPL_TEAMS.includes(hostName.trim()))
-      return res.status(400).json({ error: 'Please select a valid IPL team' });
+    if (!hostName || hostName.trim().length < 2)
+      return res.status(400).json({ error: 'Host name must be at least 2 characters' });
 
     let roomId;
     let attempts = 0;
@@ -141,8 +128,8 @@ app.post('/api/rooms/:id/join', async (req, res) => {
   try {
     const roomId = req.params.id.toUpperCase();
     const { teamName } = req.body;
-    if (!teamName || !VALID_IPL_TEAMS.includes(teamName.trim()))
-      return res.status(400).json({ error: 'Please select a valid IPL team' });
+    if (!teamName || teamName.trim().length < 2)
+      return res.status(400).json({ error: 'Team name must be at least 2 characters' });
 
     const { rows: roomRows } = await db.query('SELECT * FROM rooms WHERE room_id = $1', [roomId]);
     if (roomRows.length === 0) return res.status(404).json({ error: 'Room not found' });
