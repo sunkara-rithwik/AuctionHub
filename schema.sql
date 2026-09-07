@@ -50,3 +50,8 @@ CREATE TABLE IF NOT EXISTS auction_results (
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_teams_room    ON teams(room_id);
 CREATE INDEX IF NOT EXISTS idx_results_room  ON auction_results(room_id);
+
+-- Migrations for existing deployments
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS mode VARCHAR(20) DEFAULT 'standard';
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS custom_players JSONB DEFAULT NULL;
+

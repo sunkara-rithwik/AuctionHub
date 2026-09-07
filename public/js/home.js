@@ -245,24 +245,6 @@ if (specialForm) {
   });
 }
 
-    // Store session info
-    sessionStorage.setItem('ah_room_id',    data.roomId);
-    sessionStorage.setItem('ah_team_id',    data.teamId);
-    sessionStorage.setItem('ah_team_name',  hostName);
-    sessionStorage.setItem('ah_is_host',    'true');
-    sessionStorage.setItem('ah_budget',     data.initialBudget);
-    sessionStorage.setItem('ah_mode',       data.mode || 'standard');
-    sessionStorage.setItem('ah_item_count', data.itemCount || '');
-
-    toast(`Room ${data.roomId} created (${data.mode === 'special' ? 'Special Auction' : 'Standard'})!`, 'success');
-    setTimeout(() => { window.location.href = '/lobby.html'; }, 600);
-  } catch (err) {
-    toast('Network error — is the server running?', 'error');
-  } finally {
-    setLoading('create-btn', false, '🚀 Create Room');
-  }
-});
-
 // ─── Join Room ────────────────────────────────────────────────────────────────
 document.getElementById('join-form').addEventListener('submit', async (e) => {
   e.preventDefault();
