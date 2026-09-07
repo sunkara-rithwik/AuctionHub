@@ -11,6 +11,10 @@ const path       = require('path');
 const { db }     = require('./db');
 const { players: seedPlayers } = require('./seed');
 
+const multer     = require('multer');
+const XLSX       = require('xlsx');
+const upload     = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, { cors: { origin: '*' } });
@@ -18,7 +22,53 @@ const PORT   = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ─── Excel Parsing Helper ─────────────────────────────────────────────────────
+function parseExcelBuffer(buffer) {
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const sheetName = workbook.SheetNames[0];
+  if (!sheetName) throw new Error('Excel file has no sheet');
+  const sheet = workbook.Sheets[sheetName];
+  const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  if (!rawRows || rawRows.length === 0) throw new Error('Excel sheet is empty');
+
+  const sample = rawRows[0];
+  const keys = Object.keys(sample);
+
+  let nameKey = keys.find(k => /name|player|item|title/i.test(k.trim()));
+  let priceKey = keys.find(k => /base.*price|price|cost|amount|budget/i.test(k.trim()));
+  let categoryKey = keys.find(k => /cat|role|set|type|group|class/i.test(k.trim()));
+
+  if (!nameKey && keys.length >= 1) nameKey = keys[0];
+  if (!priceKey && keys.length >= 2) priceKey = keys[1];
+  if (!categoryKey && keys.length >= 3) categoryKey = keys[2];
+
+  const items = [];
+  for (let i = 0; i < rawRows.length; i++) {
+    const r = rawRows[i];
+    const nameVal = String(r[nameKey] || '').trim();
+    if (!nameVal) continue;
+
+    const priceRaw = String(r[priceKey] || '0.50').replace(/[^0-9.]/g, '');
+    const priceVal = parseFloat(priceRaw) || 0.50;
+    const catVal   = String(r[categoryKey] || 'General').trim() || 'General';
+
+    items.push({
+      player_id: i + 1,
+      name: nameVal,
+      base_price: Math.max(0.01, priceVal),
+      category: catVal,
+      role: catVal,
+      ipl_team: 'Custom',
+      nationality: 'Neutral',
+    });
+  }
+
+  if (items.length === 0) throw new Error('No valid items found in Excel sheet');
+  return items;
+}
 
 // ─── Squad & Auction Constants ────────────────────────────────────────────────
 const MAX_SQUAD_SIZE = 25;
@@ -84,10 +134,72 @@ async function emitRoomUpdate(roomId) {
 
 // ─── REST API ─────────────────────────────────────────────────────────────────
 
-// Create Room
-app.post('/api/rooms', async (req, res) => {
+// Parse Excel file route
+app.post('/api/parse-excel', upload.single('excelFile'), (req, res) => {
   try {
-    const { hostName, isPrivate, initialBudget } = req.body;
+    if (!req.file) return res.status(400).json({ error: 'No Excel file uploaded' });
+    const items = parseExcelBuffer(req.file.buffer);
+    const categories = [...new Set(items.map(i => i.category))];
+    res.json({
+      success: true,
+      count: items.length,
+      categories,
+      preview: items.slice(0, 10),
+      items
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Failed to parse Excel file' });
+  }
+});
+
+// Download sample Excel template
+app.get('/api/sample-excel', (req, res) => {
+  const sampleData = [
+    { "Name": "Virat Kohli", "Base Price": "2.00", "Category": "Batsman" },
+    { "Name": "Jasprit Bumrah", "Base Price": "2.00", "Category": "Bowler" },
+    { "Name": "Hardik Pandya", "Base Price": "1.50", "Category": "All-Rounder" },
+    { "Name": "MS Dhoni", "Base Price": "2.00", "Category": "Wicketkeeper" },
+    { "Name": "MacBook Pro M3", "Base Price": "1.20", "Category": "Electronics" },
+    { "Name": "Rolex Submariner", "Base Price": "0.80", "Category": "Luxury Items" },
+    { "Name": "Penthouse Apartment", "Base Price": "10.00", "Category": "Real Estate" }
+  ];
+  const worksheet = XLSX.utils.json_to_sheet(sampleData);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Special Auction Items");
+  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="special_auction_sample.xlsx"');
+  res.send(buffer);
+});
+
+// Create Room
+app.post('/api/rooms', upload.single('excelFile'), async (req, res) => {
+  try {
+    const hostName      = req.body.hostName;
+    const isPrivate     = req.body.isPrivate === 'true' || req.body.isPrivate === true;
+    const initialBudget = req.body.initialBudget;
+    const mode          = req.body.mode || 'standard';
+    let customPlayers   = null;
+
+    if (mode === 'special') {
+      if (req.file) {
+        customPlayers = parseExcelBuffer(req.file.buffer);
+      } else if (req.body.customPlayers) {
+        try {
+          customPlayers = typeof req.body.customPlayers === 'string'
+            ? JSON.parse(req.body.customPlayers)
+            : req.body.customPlayers;
+        } catch (e) {
+          return res.status(400).json({ error: 'Invalid custom players payload' });
+        }
+      }
+
+      if (!customPlayers || customPlayers.length === 0) {
+        return res.status(400).json({ error: 'Special Auction requires a valid Excel sheet containing items.' });
+      }
+    }
+
     if (!hostName || hostName.trim().length < 2)
       return res.status(400).json({ error: 'Host name must be at least 2 characters' });
 
@@ -103,9 +215,9 @@ app.post('/api/rooms', async (req, res) => {
     const budget = Math.max(50, Math.min(500, Number(initialBudget) || 100));
 
     await db.query(
-      `INSERT INTO rooms (room_id, host_name, is_private, initial_budget, status)
-       VALUES ($1, $2, $3, $4, 'waiting')`,
-      [roomId, hostName.trim(), !!isPrivate, budget]
+      `INSERT INTO rooms (room_id, host_name, is_private, initial_budget, mode, custom_players, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'waiting')`,
+      [roomId, hostName.trim(), !!isPrivate, budget, mode, customPlayers ? JSON.stringify(customPlayers) : null]
     );
 
     const { rows: teamRows } = await db.query(
@@ -116,10 +228,16 @@ app.post('/api/rooms', async (req, res) => {
     const team = teamRows[0];
     hostMap.set(roomId, team.team_id);
 
-    res.json({ roomId, teamId: team.team_id, initialBudget: budget });
+    res.json({
+      roomId,
+      teamId: team.team_id,
+      initialBudget: budget,
+      mode,
+      itemCount: customPlayers ? customPlayers.length : null
+    });
   } catch (e) {
     console.error('Create room error:', e);
-    res.status(500).json({ error: 'Failed to create room' });
+    res.status(500).json({ error: 'Failed to create room: ' + e.message });
   }
 });
 
@@ -450,30 +568,48 @@ io.on('connection', (socket) => {
 
       await db.query(`UPDATE rooms SET status = 'active' WHERE room_id = $1`, [roomId]);
 
-      // Fetch player list
-      let rawList;
-      if (db.players) {
-        rawList = db.players;
-      } else {
-        const { rows } = await db.query('SELECT * FROM ipl_players');
-        rawList = rows;
-      }
-      if (rawList.length === 0) {
-        rawList = seedPlayers.map((p, i) => ({ player_id: i + 1, ...p }));
-      }
+      const { rows: roomRows } = await db.query('SELECT * FROM rooms WHERE room_id = $1', [roomId]);
+      const room = roomRows[0];
+      const mode = room?.mode || 'standard';
 
-      // Group into role sets, shuffle within each
-      const sets = ROLE_SETS
-        .map(({ label, role }) => ({
-          label,
-          role,
-          players: shuffleArray(rawList.filter(p => p.role === role)),
-        }))
-        .filter(s => s.players.length > 0);
+      let rawList = [];
+      let sets    = [];
+
+      if (mode === 'special' && room?.custom_players) {
+        rawList = typeof room.custom_players === 'string'
+          ? JSON.parse(room.custom_players)
+          : room.custom_players;
+
+        const categories = [...new Set(rawList.map(p => p.category || p.role || 'General'))];
+        sets = categories.map((cat, idx) => ({
+          label: `Set ${idx + 1} — ${cat}`,
+          role: cat,
+          players: shuffleArray(rawList.filter(p => (p.category || p.role || 'General') === cat)),
+        })).filter(s => s.players.length > 0);
+      } else {
+        if (db.players) {
+          rawList = db.players;
+        } else {
+          const { rows } = await db.query('SELECT * FROM ipl_players');
+          rawList = rows;
+        }
+        if (rawList.length === 0) {
+          rawList = seedPlayers.map((p, i) => ({ player_id: i + 1, ...p }));
+        }
+
+        sets = ROLE_SETS
+          .map(({ label, role }) => ({
+            label,
+            role,
+            players: shuffleArray(rawList.filter(p => p.role === role)),
+          }))
+          .filter(s => s.players.length > 0);
+      }
 
       const totalPlayers = sets.reduce((sum, s) => sum + s.players.length, 0);
 
       auctionStates.set(roomId, {
+        mode,
         sets,
         currentSetIndex:   0,
         currentPlayerInSet: 0,
@@ -494,8 +630,8 @@ io.on('connection', (socket) => {
       });
 
       // Tell everyone auction is initialised, then show Set 1 preview
-      io.to(roomId).emit('auction_started', { totalPlayers, totalSets: sets.length });
-      io.to(roomId).emit('auction_initialized', { totalPlayers, totalSets: sets.length });
+      io.to(roomId).emit('auction_started', { totalPlayers, totalSets: sets.length, mode });
+      io.to(roomId).emit('auction_initialized', { totalPlayers, totalSets: sets.length, mode });
       emitSetPreview(roomId, auctionStates.get(roomId));
     } catch (e) {
       console.error('Error starting auction:', e);
@@ -560,16 +696,18 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // ── Nationality limits ──
-    const player   = state.currentPlayer;
-    const isIndian = player.nationality === 'Indian';
-    if (isIndian && squad.indianCount >= MAX_INDIANS) {
-      socket.emit('bid_rejected', { message: `Indian player cap reached (max ${MAX_INDIANS} Indians per squad)!` });
-      return;
-    }
-    if (!isIndian && squad.foreignerCount >= MAX_FOREIGNERS) {
-      socket.emit('bid_rejected', { message: `Overseas player cap reached (max ${MAX_FOREIGNERS} foreigners per squad)!` });
-      return;
+    // ── Nationality limits (only in standard mode) ──
+    if (state.mode !== 'special') {
+      const player   = state.currentPlayer;
+      const isIndian = player.nationality === 'Indian';
+      if (isIndian && squad.indianCount >= MAX_INDIANS) {
+        socket.emit('bid_rejected', { message: `Indian player cap reached (max ${MAX_INDIANS} Indians per squad)!` });
+        return;
+      }
+      if (!isIndian && player.nationality && player.nationality !== 'Neutral' && squad.foreignerCount >= MAX_FOREIGNERS) {
+        socket.emit('bid_rejected', { message: `Overseas player cap reached (max ${MAX_FOREIGNERS} foreigners per squad)!` });
+        return;
+      }
     }
 
     // ── Budget check ──

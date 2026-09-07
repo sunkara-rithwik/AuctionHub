@@ -5,12 +5,14 @@
 
 -- Rooms
 CREATE TABLE IF NOT EXISTS rooms (
-    room_id     VARCHAR(6)      PRIMARY KEY,
-    host_name   VARCHAR(50)     NOT NULL,
-    is_private  BOOLEAN         DEFAULT false,
-    initial_budget NUMERIC(10,2) DEFAULT 100.00,
-    status      VARCHAR(20)     DEFAULT 'waiting',  -- waiting | active | finished
-    created_at  TIMESTAMP       DEFAULT NOW()
+    room_id        VARCHAR(6)      PRIMARY KEY,
+    host_name      VARCHAR(50)     NOT NULL,
+    is_private     BOOLEAN         DEFAULT false,
+    initial_budget NUMERIC(10,2)   DEFAULT 100.00,
+    mode           VARCHAR(20)     DEFAULT 'standard', -- standard | special
+    custom_players JSONB           DEFAULT NULL,
+    status         VARCHAR(20)     DEFAULT 'waiting',  -- waiting | active | finished
+    created_at     TIMESTAMP       DEFAULT NOW()
 );
 
 -- Teams (participants)
