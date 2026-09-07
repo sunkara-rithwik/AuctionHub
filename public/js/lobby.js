@@ -36,35 +36,12 @@ function escapeHtml(str) {
 document.getElementById('room-code-display').textContent = roomId;
 document.getElementById('budget-info').textContent = `₹${budget} Cr`;
 
-// Fetch & display room mode badge
-async function fetchRoomDetails() {
-  try {
-    const res = await fetch(`/api/rooms/${roomId}`);
-    const data = await res.json();
-    if (data.room) {
-      const mode = data.room.mode || 'standard';
-      sessionStorage.setItem('ah_mode', mode);
-      const roomTypeBadge = document.getElementById('room-type-badge');
-      if (mode === 'special') {
-        const customItems = typeof data.room.custom_players === 'string'
-          ? JSON.parse(data.room.custom_players)
-          : data.room.custom_players;
-        const count = customItems ? customItems.length : 0;
-        roomTypeBadge.innerHTML = `
-          <div style="text-align:right">
-            <span class="badge badge-gold">⭐ Special Auction</span>
-            <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.2rem">📄 ${count} custom items</div>
-          </div>
-        `;
-      } else {
-        roomTypeBadge.innerHTML = `<span class="badge badge-blue">🏏 Standard IPL</span>`;
-      }
-    }
-  } catch (err) {
-    console.warn('Could not fetch room details:', err);
-  }
-}
-fetchRoomDetails();
+// Room type badge
+const roomTypeBadge = document.getElementById('room-type-badge');
+const isPrivate = sessionStorage.getItem('ah_is_host') === 'true'
+  ? document.querySelector('#btn-private') !== null  // don't rely on this
+  : false;
+roomTypeBadge.innerHTML = `<span class="badge badge-blue">🌐 Public</span>`;
 
 // Show host controls vs waiting state
 if (isHost) {

@@ -5,14 +5,12 @@
 
 -- Rooms
 CREATE TABLE IF NOT EXISTS rooms (
-    room_id        VARCHAR(6)      PRIMARY KEY,
-    host_name      VARCHAR(50)     NOT NULL,
-    is_private     BOOLEAN         DEFAULT false,
-    initial_budget NUMERIC(10,2)   DEFAULT 100.00,
-    mode           VARCHAR(20)     DEFAULT 'standard', -- standard | special
-    custom_players JSONB           DEFAULT NULL,
-    status         VARCHAR(20)     DEFAULT 'waiting',  -- waiting | active | finished
-    created_at     TIMESTAMP       DEFAULT NOW()
+    room_id     VARCHAR(6)      PRIMARY KEY,
+    host_name   VARCHAR(50)     NOT NULL,
+    is_private  BOOLEAN         DEFAULT false,
+    initial_budget NUMERIC(10,2) DEFAULT 100.00,
+    status      VARCHAR(20)     DEFAULT 'waiting',  -- waiting | active | finished
+    created_at  TIMESTAMP       DEFAULT NOW()
 );
 
 -- Teams (participants)
@@ -50,8 +48,3 @@ CREATE TABLE IF NOT EXISTS auction_results (
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_teams_room    ON teams(room_id);
 CREATE INDEX IF NOT EXISTS idx_results_room  ON auction_results(room_id);
-
--- Migrations for existing deployments
-ALTER TABLE rooms ADD COLUMN IF NOT EXISTS mode VARCHAR(20) DEFAULT 'standard';
-ALTER TABLE rooms ADD COLUMN IF NOT EXISTS custom_players JSONB DEFAULT NULL;
-

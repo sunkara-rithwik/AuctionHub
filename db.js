@@ -18,17 +18,8 @@ class MemoryStore {
 
     // ── INSERT room ──────────────────────────────────────────────────────────
     if (s.startsWith('insert into rooms')) {
-      const [room_id, host_name, is_private, initial_budget, mode, custom_players] = params;
-      const room = {
-        room_id,
-        host_name,
-        is_private,
-        initial_budget,
-        mode: mode || 'standard',
-        custom_players: custom_players || null,
-        status: 'waiting',
-        created_at: new Date()
-      };
+      const [room_id, host_name, is_private, initial_budget] = params;
+      const room = { room_id, host_name, is_private, initial_budget, status: 'waiting', created_at: new Date() };
       this.rooms.set(room_id, room);
       return { rows: [room] };
     }

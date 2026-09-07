@@ -13,7 +13,6 @@ let   myBudget = parseFloat(sessionStorage.getItem('ah_budget')) || 100;
 if (!roomId || !teamId) { window.location.href = '/'; }
 
 // ─── State ────────────────────────────────────────────────────────────────────
-let auctionMode      = sessionStorage.getItem('ah_mode') || 'standard';
 let currentBid       = 0;
 let currentPlayer    = null;
 let timeLeft         = 8;
@@ -68,28 +67,25 @@ function avatarGrad(name) {
 }
 
 function roleClass(role) {
-  if (!role) return 'badge-blue';
-  const r = String(role).toLowerCase();
-  if (r.includes('bat')) return 'badge-blue';
-  if (r.includes('all') || r.includes('star')) return 'badge-gold';
-  if (r.includes('wick') || r.includes('lux')) return 'badge-purple';
-  if (r.includes('pace') || r.includes('bowl') || r.includes('tech')) return 'badge-green';
-  if (r.includes('spin') || r.includes('estate') || r.includes('prop')) return 'badge-red';
-  return 'badge-blue';
+  const map = {
+    'Batsman':      'badge-blue',
+    'All-Rounder':  'badge-gold',
+    'Wicketkeeper': 'badge-purple',
+    'Pacer':        'badge-green',
+    'Spinner':      'badge-red',
+  };
+  return map[role] || 'badge-blue';
 }
 
 function roleEmoji(role) {
-  if (!role) return '⭐';
-  const r = String(role).toLowerCase();
-  if (r.includes('bat')) return '🏏';
-  if (r.includes('bowl') || r.includes('pace')) return '⚾';
-  if (r.includes('all')) return '⚡';
-  if (r.includes('wick')) return '🧤';
-  if (r.includes('spin')) return '🌀';
-  if (r.includes('elect') || r.includes('tech') || r.includes('gadg')) return '💻';
-  if (r.includes('estate') || r.includes('house') || r.includes('prop')) return '🏢';
-  if (r.includes('lux') || r.includes('gold') || r.includes('car')) return '💎';
-  return '⭐';
+  const map = {
+    'Batsman':      '🏏',
+    'All-Rounder':  '⚡',
+    'Wicketkeeper': '🧤',
+    'Pacer':        '💨',
+    'Spinner':      '🌀',
+  };
+  return map[role] || '🏏';
 }
 
 // ─── Tab Switching ────────────────────────────────────────────────────────────
@@ -118,15 +114,11 @@ function updateMyBudgetDisplay() {
 
   const limitsEl = document.getElementById('my-squad-limits');
   if (limitsEl) {
-    if (auctionMode === 'special') {
-      limitsEl.innerHTML = `<span style="color:var(--gold)">⭐ Special Auction</span>`;
-    } else {
-      const indClass = mySquad.indianCount >= MAX_INDIANS ? 'style="color:#f87171"' : '';
-      const forClass = mySquad.foreignerCount >= MAX_FOREIGNERS ? 'style="color:#f87171"' : '';
-      limitsEl.innerHTML =
-        `🇮🇳 <span ${indClass}>${mySquad.indianCount}/${MAX_INDIANS}</span>&nbsp;` +
-        `🌍 <span ${forClass}>${mySquad.foreignerCount}/${MAX_FOREIGNERS}</span>`;
-    }
+    const indClass = mySquad.indianCount >= MAX_INDIANS ? 'style="color:#f87171"' : '';
+    const forClass = mySquad.foreignerCount >= MAX_FOREIGNERS ? 'style="color:#f87171"' : '';
+    limitsEl.innerHTML =
+      `🇮🇳 <span ${indClass}>${mySquad.indianCount}/${MAX_INDIANS}</span>&nbsp;` +
+      `🌍 <span ${forClass}>${mySquad.foreignerCount}/${MAX_FOREIGNERS}</span>`;
   }
 
   updateQuickBids();
@@ -140,24 +132,19 @@ function showSetPreview({ setIndex, setNumber, label, role, players, totalSets }
 
   document.getElementById('set-preview-pill').textContent  = `Set ${setNumber} of ${totalSets}`;
   document.getElementById('set-preview-title').textContent = `${emoji} ${setTitle}`;
-  document.getElementById('set-preview-sub').textContent   = `${players.length} ${auctionMode === 'special' ? 'items' : 'players'} up for auction`;
+  document.getElementById('set-preview-sub').textContent   = `${players.length} players up for auction`;
 
   const grid = document.getElementById('set-preview-grid');
-  grid.innerHTML = players.map(p => {
-    const metaStr = (p.ipl_team && p.ipl_team !== 'Custom')
-      ? `${escapeHtml(p.ipl_team)} · ${escapeHtml(p.nationality || '')}`
-      : (p.nationality && p.nationality !== 'Neutral' ? escapeHtml(p.nationality) : 'Custom Item');
-    return `
-      <div class="preview-player-card">
-        <div class="preview-player-name">${escapeHtml(p.name)}</div>
-        <div class="preview-player-meta">
-          <span class="badge ${roleClass(p.role)}" style="font-size:0.65rem;padding:0.1rem 0.4rem">${escapeHtml(p.role)}</span>
-          <span class="preview-player-price">₹${Number(p.base_price).toFixed(2)}Cr</span>
-        </div>
-        <div class="preview-player-team">${metaStr}</div>
+  grid.innerHTML = players.map(p => `
+    <div class="preview-player-card">
+      <div class="preview-player-name">${escapeHtml(p.name)}</div>
+      <div class="preview-player-meta">
+        <span class="badge ${roleClass(p.role)}" style="font-size:0.65rem;padding:0.1rem 0.4rem">${escapeHtml(p.role)}</span>
+        <span class="preview-player-price">₹${Number(p.base_price).toFixed(2)}Cr</span>
       </div>
-    `;
-  }).join('');
+      <div class="preview-player-team">${escapeHtml(p.ipl_team || '')} · ${escapeHtml(p.nationality || '')}</div>
+    </div>
+  `).join('');
 
   const footer = document.getElementById('set-preview-footer');
   if (isHost) {
@@ -203,8 +190,8 @@ function renderPlayerCard(player) {
   roleBadge.textContent = player.role || '—';
   roleBadge.className   = `badge ${roleClass(player.role)}`;
 
-  document.getElementById('player-team-badge').textContent   = (player.ipl_team && player.ipl_team !== 'Custom') ? player.ipl_team : (player.category || player.role || 'Item');
-  document.getElementById('player-nation-badge').textContent = (player.nationality && player.nationality !== 'Neutral') ? player.nationality : '⭐ Special Item';
+  document.getElementById('player-team-badge').textContent   = player.ipl_team || player.team || '—';
+  document.getElementById('player-nation-badge').textContent = player.nationality || '—';
 
   const suggestedBid = Math.max(Number(player.base_price), currentBid + 0.25);
   document.getElementById('bid-input').value = suggestedBid.toFixed(2);
@@ -504,12 +491,12 @@ function clientBidGuard(amount) {
   if (mySquad.players.length >= MAX_SQUAD) {
     toast(`Squad full! Max ${MAX_SQUAD} players per team.`, 'error'); return false;
   }
-  if (currentPlayer && auctionMode !== 'special') {
+  if (currentPlayer) {
     const isIndian = currentPlayer.nationality === 'Indian';
     if (isIndian  && mySquad.indianCount >= MAX_INDIANS) {
       toast(`Indian player cap reached (max ${MAX_INDIANS})!`, 'error'); return false;
     }
-    if (!isIndian && currentPlayer.nationality && currentPlayer.nationality !== 'Neutral' && mySquad.foreignerCount >= MAX_FOREIGNERS) {
+    if (!isIndian && mySquad.foreignerCount >= MAX_FOREIGNERS) {
       toast(`Overseas player cap reached (max ${MAX_FOREIGNERS})!`, 'error'); return false;
     }
   }
