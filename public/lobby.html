@@ -6,6 +6,7 @@
   <title>Auction Hub — Lobby</title>
   <meta name="description" content="Auction Hub waiting lobby. Wait for the host to start the IPL auction." />
   <link rel="stylesheet" href="css/style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <style>
     body { display: flex; flex-direction: column; min-height: 100vh; }
 
@@ -16,6 +17,8 @@
       align-items: center;
       justify-content: flex-start;
       padding: 2.5rem 1.25rem 4rem;
+      position: relative;
+      z-index: 1;
     }
 
     .lobby-inner {
@@ -33,6 +36,8 @@
       background: rgba(240,180,41,0.06);
       border: 1px solid var(--border-gold);
       border-radius: var(--radius-lg);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 0 30px rgba(240,180,41,0.15);
     }
 
     .room-code-label {
@@ -45,12 +50,12 @@
 
     .room-code-value {
       font-family: 'Rajdhani', sans-serif;
-      font-size: 3rem;
+      font-size: 3.2rem;
       font-weight: 700;
       color: var(--gold);
       letter-spacing: 0.2em;
       line-height: 1;
-      text-shadow: 0 0 30px rgba(240,180,41,0.4);
+      text-shadow: 0 0 35px rgba(240,180,41,0.5);
       margin-bottom: 0.75rem;
     }
 
@@ -86,6 +91,7 @@
       display: flex;
       flex-direction: column;
       gap: 0.75rem;
+      backdrop-filter: blur(12px);
     }
 
     .start-hint {
@@ -136,6 +142,9 @@
 </head>
 <body>
 
+<!-- 3D Stadium Canvas -->
+<canvas id="stadium-canvas"></canvas>
+
 <div class="animated-bg">
   <div class="orb orb-1"></div>
   <div class="orb orb-2"></div>
@@ -145,12 +154,17 @@
 <div id="toast-container"></div>
 
 <!-- Navbar -->
-<nav class="navbar">
+<nav class="navbar" style="position:relative;z-index:2">
   <div class="container">
-    <a href="/" class="nav-logo">🏏 Auction<span>Hub</span></a>
-    <div id="lobby-status-badge" class="badge badge-gold">
-      <span class="hero-dot" style="width:6px;height:6px;border-radius:50%;background:var(--green-sold);animation:dotBlink 1.2s ease infinite"></span>
-      Waiting
+    <a href="/" class="nav-logo">🏏 Auction<span>Hub 3D</span></a>
+    <div style="display:flex;align-items:center;gap:0.75rem">
+      <button class="btn-audio-toggle" id="audio-toggle" onclick="toggleAudio()" title="Toggle 3D Audio FX">
+        <span id="audio-icon">🔊</span> <span id="audio-text">Audio ON</span>
+      </button>
+      <div id="lobby-status-badge" class="badge badge-gold">
+        <span class="hero-dot" style="width:6px;height:6px;border-radius:50%;background:var(--green-sold);animation:dotBlink 1.2s ease infinite"></span>
+        Waiting
+      </div>
     </div>
   </div>
 </nav>
@@ -158,16 +172,16 @@
 <div class="lobby-wrap">
   <div class="lobby-inner">
 
-    <!-- Room Code -->
-    <div class="room-code-box">
-      <div class="room-code-label">Room Code — Share with friends</div>
+    <!-- Room Code with 3D Tilt -->
+    <div class="room-code-box card-3d">
+      <div class="room-code-label">⚡ 3D Room Beacon — Share Code</div>
       <div class="room-code-value" id="room-code-display">——</div>
       <button class="btn btn-ghost btn-sm" id="copy-btn" onclick="copyRoomCode()">📋 Copy Code</button>
-      <p class="copy-hint">Friends enter this code at auctionhub to join</p>
+      <p class="copy-hint">Friends enter this code at AuctionHub to join</p>
     </div>
 
     <!-- Room info bar -->
-    <div class="glass-card" style="padding:1rem 1.25rem;">
+    <div class="glass-card card-3d" style="padding:1rem 1.25rem;">
       <div class="flex-between">
         <div>
           <div class="section-title" style="margin-bottom:0">Room Info</div>
@@ -180,18 +194,18 @@
     </div>
 
     <!-- Teams -->
-    <div class="glass-card" style="padding:1.25rem;">
+    <div class="glass-card card-3d" style="padding:1.25rem;">
       <div class="flex-between" style="margin-bottom:0.75rem">
         <div class="section-title" style="margin-bottom:0">Teams (<span id="team-count">0</span>/10)</div>
-        <div style="font-size:0.78rem;color:var(--text-muted)">Min 3 to start</div>
+        <div style="font-size:0.78rem;color:var(--text-muted)">Min 1 to test / start</div>
       </div>
       <div class="team-list" id="team-list">
-        <div class="empty-state">Waiting for players to join...</div>
+        <div class="empty-state">Waiting for teams to enter 3D arena...</div>
       </div>
     </div>
 
     <!-- Host Controls -->
-    <div class="host-controls" id="host-controls" style="display:none">
+    <div class="host-controls card-3d" id="host-controls" style="display:none">
       <div class="flex-between">
         <span style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:1.05rem;color:var(--gold)">
           ⚡ Host Controls
@@ -199,18 +213,18 @@
         <span class="badge badge-gold">HOST</span>
       </div>
       <button class="btn btn-gold btn-full" id="start-btn" onclick="startAuction()" disabled>
-        🏏 Start Auction
+        🏏 Launch 3D Auction Arena
       </button>
       <p class="start-hint" id="start-hint">Ready to start</p>
     </div>
 
     <!-- Non-host waiting state -->
-    <div id="waiting-state" class="glass-card" style="display:none;padding:2rem;text-align:center">
+    <div id="waiting-state" class="glass-card card-3d" style="display:none;padding:2rem;text-align:center">
       <div style="font-size:2rem;margin-bottom:0.75rem">⏳</div>
       <div style="font-family:'Rajdhani',sans-serif;font-size:1.2rem;font-weight:600;margin-bottom:0.5rem">
-        Waiting for host to start
+        Waiting for host to launch auction
       </div>
-      <div style="color:var(--text-muted);font-size:0.88rem">Hang tight — the auction begins soon!</div>
+      <div style="color:var(--text-muted);font-size:0.88rem">Hang tight — the 3D auction begins soon!</div>
       <div class="waiting-dots">
         <div class="waiting-dot"></div>
         <div class="waiting-dot"></div>
@@ -225,7 +239,38 @@
   Maker & Designer: <span class="designer-name">SUNKARA RITHWIK</span>
 </footer>
 
+<!-- 3D Scripts -->
+<script src="js/sound-fx.js"></script>
+<script src="js/three-scene.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script src="js/lobby.js"></script>
+<script>
+  function toggleAudio() {
+    const isMuted = window.soundFX.toggleMute();
+    const btn = document.getElementById('audio-toggle');
+    const icon = document.getElementById('audio-icon');
+    const text = document.getElementById('audio-text');
+    btn.classList.toggle('muted', isMuted);
+    icon.textContent = isMuted ? '🔇' : '🔊';
+    text.textContent = isMuted ? 'Audio OFF' : 'Audio ON';
+    if (!isMuted) window.soundFX.bidChime();
+  }
+
+  if (window.soundFX && window.soundFX.isMuted()) {
+    const btn = document.getElementById('audio-toggle');
+    if (btn) {
+      btn.classList.add('muted');
+      document.getElementById('audio-icon').textContent = '🔇';
+      document.getElementById('audio-text').textContent = 'Audio OFF';
+    }
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    if (window.Auction3D) {
+      Auction3D.initStadiumBackground('stadium-canvas');
+      Auction3D.apply3DTilt('.card-3d', 8);
+    }
+  });
+</script>
 </body>
 </html>

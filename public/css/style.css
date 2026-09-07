@@ -754,3 +754,133 @@ input[type="range"]::-webkit-slider-thumb {
   font-weight: 700;
   text-shadow: 0 0 10px rgba(240, 180, 41, 0.35);
 }
+
+/* ─── 3D Visuals & Canvas Layers ─────────────────────────────── */
+#stadium-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.85;
+}
+
+.perspective-root {
+  perspective: 1200px;
+}
+
+.card-3d {
+  transform-style: preserve-3d;
+  will-change: transform;
+  position: relative;
+  transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s ease;
+}
+
+.card-3d:hover {
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7), 0 0 25px rgba(240, 180, 41, 0.2);
+}
+
+/* 3D Trophy Showcase in Hero */
+.hero-3d-split {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+@media (max-width: 900px) {
+  .hero-3d-split {
+    flex-direction: column-reverse;
+    text-align: center;
+  }
+}
+
+.trophy-3d-container {
+  width: 320px;
+  height: 320px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 15px 35px rgba(245, 158, 11, 0.35));
+}
+
+.trophy-pedestal-glow {
+  position: absolute;
+  bottom: 25px;
+  width: 180px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(245, 158, 11, 0.6) 0%, rgba(245, 158, 11, 0) 70%);
+  animation: glowPulse 2.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes glowPulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+/* 3D Auction Arena Podium */
+.podium-stage-wrap {
+  width: 100%;
+  height: 200px;
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: radial-gradient(circle at 50% 120%, rgba(240, 180, 41, 0.12) 0%, rgba(13, 15, 30, 0.4) 70%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 0.75rem;
+}
+
+#podium-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.gavel-badge {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  font-size: 0.7rem;
+  font-family: 'Rajdhani', sans-serif;
+  letter-spacing: 0.1em;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--border-gold);
+  color: var(--gold);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
+/* Audio Toggle Button in Navbar */
+.btn-audio-toggle {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.btn-audio-toggle:hover {
+  background: rgba(240, 180, 41, 0.15);
+  border-color: var(--border-gold);
+  transform: translateY(-1px);
+}
+
+.btn-audio-toggle.muted {
+  opacity: 0.6;
+  color: var(--text-muted);
+}
+

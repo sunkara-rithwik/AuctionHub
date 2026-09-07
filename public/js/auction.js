@@ -197,6 +197,11 @@ function renderPlayerCard(player) {
   document.getElementById('bid-input').value = suggestedBid.toFixed(2);
 
   updateQuickBids();
+
+  // 3D Podium Lighting
+  if (window.Auction3D && player.role) {
+    Auction3D.updatePodiumColor(player.role);
+  }
 }
 
 // ─── Update Bid Display ───────────────────────────────────────────────────────
@@ -270,6 +275,15 @@ function updateTimer(seconds) {
 
   if (seconds <= 5)       { el.classList.add('critical'); bar.classList.add('critical'); }
   else if (seconds <= 10) { el.classList.add('warning');  bar.classList.add('warning');  }
+
+  // 3D Audio FX: Play tense countdown ticks
+  if (window.soundFX) {
+    if (seconds <= 3 && seconds > 0) {
+      window.soundFX.timerUrgent();
+    } else if (seconds <= 8 && seconds > 3) {
+      window.soundFX.timerTick();
+    }
+  }
 }
 
 // ─── Teams Panel ─────────────────────────────────────────────────────────────
@@ -594,6 +608,8 @@ socket.on('squad_update', ({ teamSquads: squads }) => {
 // Bid updated
 socket.on('bid_updated', ({ currentBid: bid, highestBidderName, highestBidderId }) => {
   renderBidUpdate(bid, highestBidderName, highestBidderId);
+  if (window.Auction3D) window.Auction3D.triggerGavelStrike();
+  if (window.soundFX) window.soundFX.bidChime();
 });
 
 // Bid rejected
@@ -621,6 +637,8 @@ socket.on('player_sold', ({ player, teamName: winnerName, bid, soldList: list })
   renderSoldHistory();
   showResultBanner('sold', '🔨 SOLD!', `${player.name} → ${winnerName} @ ₹${Number(bid).toFixed(2)} Cr`);
   addChatMsg({ message: `🔨 ${player.name} SOLD to ${winnerName} (₹${Number(bid).toFixed(2)} Cr)` }, true);
+  if (window.Auction3D) window.Auction3D.triggerConfettiExplosion();
+  if (window.soundFX) window.soundFX.soldFanfare();
 });
 
 // Player unsold
@@ -629,6 +647,7 @@ socket.on('player_unsold', ({ player, soldList: list }) => {
   renderSoldHistory();
   showResultBanner('unsold', '❌ UNSOLD', `${player.name} goes unsold`);
   addChatMsg({ message: `❌ ${player.name} UNSOLD` }, true);
+  if (window.Auction3D) window.Auction3D.triggerGavelStrike();
 });
 
 // Auction paused / resumed

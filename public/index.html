@@ -12,6 +12,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" />
   <link rel="stylesheet" href="css/style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <style>
     /* ── Page-specific styles ── */
     .hero {
@@ -213,7 +214,10 @@
 </head>
 <body>
 
-<!-- Animated Background -->
+<!-- 3D Stadium WebGL Canvas Layer -->
+<canvas id="stadium-canvas"></canvas>
+
+<!-- Animated Background fallback -->
 <div class="animated-bg">
   <div class="orb orb-1"></div>
   <div class="orb orb-2"></div>
@@ -226,58 +230,73 @@
 <!-- Navbar -->
 <nav class="navbar">
   <div class="container">
-    <a href="/" class="nav-logo">🏏 Auction<span>Hub</span></a>
-    <div class="badge badge-gold">
-      <span class="hero-dot"></span> LIVE NOW
+    <a href="/" class="nav-logo">🏏 Auction<span>Hub 3D</span></a>
+    <div style="display:flex;align-items:center;gap:0.75rem">
+      <button class="btn-audio-toggle" id="audio-toggle" onclick="toggleAudio()" title="Toggle 3D Audio FX">
+        <span id="audio-icon">🔊</span> <span id="audio-text">Audio ON</span>
+      </button>
+      <div class="badge badge-gold">
+        <span class="hero-dot"></span> 3D ARENA
+      </div>
     </div>
   </div>
 </nav>
 
-<!-- Hero -->
+<!-- Hero Section with 3D Trophy Showcase -->
 <section class="hero">
-  <div class="hero-content">
-    <div class="hero-badge">
-      <span class="hero-dot"></span>
-      Real-Time IPL Auction
+  <div class="container">
+    <div class="hero-3d-split">
+      <!-- Hero Left: Text & Stats -->
+      <div class="hero-content" style="max-width:580px;text-align:left;margin:0">
+        <div class="hero-badge">
+          <span class="hero-dot"></span>
+          Next-Gen 3D IPL Auction Arena
+        </div>
+
+        <h1 class="hero-title" style="text-align:left">
+          <span class="gradient-text">BID. WIN.</span><br />
+          <span style="color: var(--text-primary)">BUILD YOUR EMPIRE.</span>
+        </h1>
+
+        <p class="hero-sub" style="margin:0 0 2rem 0;text-align:left">
+          Host high-stakes live cricket auctions with friends in full 3D. Real-time bidding physics, animated gavel strikes, and live stadium floodlights.
+        </p>
+
+        <div class="hero-stats" style="justify-content:flex-start;margin-bottom:2.5rem">
+          <div class="stat-item">
+            <div class="stat-num">100+</div>
+            <div class="stat-label">IPL Stars</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-num">10</div>
+            <div class="stat-label">Teams / Room</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-num">&lt;30ms</div>
+            <div class="stat-label">3D Sync</div>
+          </div>
+        </div>
+
+        <a href="#forms" class="btn btn-gold btn-lg" onclick="document.getElementById('forms').scrollIntoView({behavior:'smooth'});return false;">
+          Enter 3D Arena ↓
+        </a>
+      </div>
+
+      <!-- Hero Right: Interactive 3D Trophy -->
+      <div class="trophy-3d-container" id="trophy-3d-wrap" title="Interactive 3D IPL Trophy (move mouse over it)">
+        <div class="trophy-pedestal-glow"></div>
+      </div>
     </div>
-
-    <h1 class="hero-title">
-      <span class="gradient-text">BID. WIN.</span><br />
-      <span style="color: var(--text-primary)">BUILD YOUR TEAM.</span>
-    </h1>
-
-    <p class="hero-sub">
-      Host live cricket auctions with friends. Real-time bidding, instant updates, no signup required.
-    </p>
-
-    <div class="hero-stats">
-      <div class="stat-item">
-        <div class="stat-num">100+</div>
-        <div class="stat-label">IPL Players</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-num">10</div>
-        <div class="stat-label">Teams / Room</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-num">&lt;50ms</div>
-        <div class="stat-label">Bid Sync</div>
-      </div>
-    </div>
-
-    <a href="#forms" class="btn btn-gold btn-lg" onclick="document.getElementById('forms').scrollIntoView({behavior:'smooth'});return false;">
-      Start Auction ↓
-    </a>
   </div>
 </section>
 
-<!-- Forms -->
+<!-- Forms with 3D Card Tilt -->
 <section class="forms-section" id="forms">
   <div class="container">
     <div class="forms-grid">
 
-      <!-- Create Room -->
-      <div class="glass-card gold-border">
+      <!-- Create Room Card (3D Tilt) -->
+      <div class="glass-card gold-border card-3d">
         <div class="form-header">
           <h2 class="form-title gradient-text">Create Room</h2>
           <p class="form-subtitle">Host your own auction as the auctioneer</p>
@@ -311,13 +330,13 @@
           </div>
 
           <button type="submit" class="btn btn-gold btn-full" id="create-btn">
-            🚀 Create Room
+            🚀 Create 3D Room
           </button>
         </form>
       </div>
 
-      <!-- Join Room -->
-      <div class="glass-card blue-border">
+      <!-- Join Room Card (3D Tilt) -->
+      <div class="glass-card blue-border card-3d">
         <div class="form-header">
           <h2 class="form-title blue-text">Join Room</h2>
           <p class="form-subtitle">Enter a room code to join as a bidder</p>
@@ -336,13 +355,13 @@
           </div>
 
           <button type="submit" class="btn btn-blue btn-full" id="join-btn">
-            🏏 Join Auction
+            🏏 Join 3D Auction
           </button>
         </form>
 
         <!-- Public rooms list -->
         <div id="public-rooms-wrap" style="margin-top:1.25rem">
-          <div class="section-title">Public Rooms</div>
+          <div class="section-title">Live Public Rooms</div>
           <div id="public-rooms-list">
             <div class="empty-state">Loading rooms...</div>
           </div>
@@ -357,6 +376,39 @@
   Maker & Designer: <span class="designer-name">SUNKARA RITHWIK</span>
 </footer>
 
+<!-- Scripts -->
+<script src="js/sound-fx.js"></script>
+<script src="js/three-scene.js"></script>
 <script src="js/home.js"></script>
+<script>
+  function toggleAudio() {
+    const isMuted = window.soundFX.toggleMute();
+    const btn = document.getElementById('audio-toggle');
+    const icon = document.getElementById('audio-icon');
+    const text = document.getElementById('audio-text');
+    btn.classList.toggle('muted', isMuted);
+    icon.textContent = isMuted ? '🔇' : '🔊';
+    text.textContent = isMuted ? 'Audio OFF' : 'Audio ON';
+    if (!isMuted) window.soundFX.bidChime();
+  }
+
+  // Update initial button state
+  if (window.soundFX && window.soundFX.isMuted()) {
+    const btn = document.getElementById('audio-toggle');
+    if (btn) {
+      btn.classList.add('muted');
+      document.getElementById('audio-icon').textContent = '🔇';
+      document.getElementById('audio-text').textContent = 'Audio OFF';
+    }
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    if (window.Auction3D) {
+      Auction3D.initStadiumBackground('stadium-canvas');
+      Auction3D.initTrophyScene('trophy-3d-wrap');
+      Auction3D.apply3DTilt('.card-3d', 10);
+    }
+  });
+</script>
 </body>
 </html>

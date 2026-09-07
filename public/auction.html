@@ -6,6 +6,7 @@
   <title>Auction Hub — Live Auction</title>
   <meta name="description" content="Live IPL-style auction room. Bid on players in real-time with your friends." />
   <link rel="stylesheet" href="css/style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <style>
     body { display: flex; flex-direction: column; min-height: 100vh; }
 
@@ -397,6 +398,9 @@
 </head>
 <body>
 
+<!-- 3D Stadium Canvas -->
+<canvas id="stadium-canvas"></canvas>
+
 <div class="animated-bg">
   <div class="orb orb-1"></div>
   <div class="orb orb-2"></div>
@@ -494,10 +498,13 @@
 </div>
 
 <!-- ══ Navbar ══════════════════════════════════════════════════════════════ -->
-<nav class="navbar">
+<nav class="navbar" style="position:relative;z-index:2">
   <div class="container" style="gap:0.75rem;flex-wrap:wrap">
-    <a href="/" class="nav-logo">🏏 Auction<span>Hub</span></a>
+    <a href="/" class="nav-logo">🏏 Auction<span>Hub 3D</span></a>
     <div class="auction-nav-bar">
+      <button class="btn-audio-toggle" id="audio-toggle" onclick="toggleAudio()" title="Toggle 3D Audio FX">
+        <span id="audio-icon">🔊</span> <span id="audio-text">Audio ON</span>
+      </button>
       <span class="auction-nav-info" id="nav-room-info">Room: ——</span>
       <span class="auction-nav-info" id="nav-team-info" style="color:var(--gold)"></span>
       <div class="badge badge-gold" id="nav-status">LIVE</div>
@@ -598,8 +605,13 @@
         </div>
       </div>
 
-      <!-- Player Card -->
-      <div class="auction-player-card" id="player-card">
+      <!-- 3D Holographic Stage & Animated Gavel -->
+      <div class="podium-stage-wrap" id="podium-stage">
+        <span class="gavel-badge">⚡ 3D PODIUM & GAVEL</span>
+      </div>
+
+      <!-- Player Card (3D Tilt) -->
+      <div class="auction-player-card card-3d" id="player-card">
         <div class="player-num" id="player-num-display">—</div>
         <div class="player-avatar-lg" id="player-avatar" style="background:linear-gradient(135deg,#1d4ed8,#7c3aed)">?</div>
         <div class="player-name-lg" id="player-name">Select a player</div>
@@ -611,8 +623,8 @@
         <div class="base-price-tag">Base Price: <span id="player-base-price">—</span></div>
       </div>
 
-      <!-- Bid Section -->
-      <div class="bid-section">
+      <!-- Bid Section (3D Tilt) -->
+      <div class="bid-section card-3d">
         <div class="current-bid-label">Current Highest Bid</div>
         <div class="bid-amount-display" id="bid-amount">₹0.00 Cr</div>
         <div class="highest-bidder-label" id="highest-bidder-label">No bids yet — be the first!</div>
@@ -662,7 +674,39 @@
   Maker & Designer: <span class="designer-name">SUNKARA RITHWIK</span>
 </footer>
 
+<!-- 3D Scripts -->
+<script src="js/sound-fx.js"></script>
+<script src="js/three-scene.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script src="js/auction.js"></script>
+<script>
+  function toggleAudio() {
+    const isMuted = window.soundFX.toggleMute();
+    const btn = document.getElementById('audio-toggle');
+    const icon = document.getElementById('audio-icon');
+    const text = document.getElementById('audio-text');
+    btn.classList.toggle('muted', isMuted);
+    icon.textContent = isMuted ? '🔇' : '🔊';
+    text.textContent = isMuted ? 'Audio OFF' : 'Audio ON';
+    if (!isMuted) window.soundFX.bidChime();
+  }
+
+  if (window.soundFX && window.soundFX.isMuted()) {
+    const btn = document.getElementById('audio-toggle');
+    if (btn) {
+      btn.classList.add('muted');
+      document.getElementById('audio-icon').textContent = '🔇';
+      document.getElementById('audio-text').textContent = 'Audio OFF';
+    }
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    if (window.Auction3D) {
+      Auction3D.initStadiumBackground('stadium-canvas');
+      Auction3D.initPlayerPodium('podium-stage');
+      Auction3D.apply3DTilt('.card-3d', 8);
+    }
+  });
+</script>
 </body>
 </html>
